@@ -8,13 +8,22 @@
 
 CSRF exploite la confiance d'un site envers un utilisateur authentifié. Le navigateur envoie automatiquement les cookies de session, même pour des requêtes initiées depuis un autre site.
 
-**Scénario type** :
-```
-1. Alice est connectée sur vulnpyapp.local (cookie de session actif)
-2. Alice visite blog-piege.com (sous contrôle de l'attaquant)
-3. Le blog contient un formulaire POST caché vers /profile/update
-4. Le navigateur soumet automatiquement le formulaire AVEC le cookie d'Alice
-5. Le profil d'Alice est modifié (username, bio) au nom d'Alice
+**Scénario type** : le navigateur envoie automatiquement les cookies de session pour le domaine de destination, même si la requête est initiée depuis un site tiers. L'attaquant n'a pas besoin de connaître le cookie, c'est le navigateur qui le fournit.
+
+```mermaid
+sequenceDiagram
+    participant A as Alice (navigateur)
+    participant B as Blog piégé (attaquant)
+    participant V as VulnPyApp
+    A->>V: Connexion
+    V-->>A: Cookie de session
+    A->>B: Visite blog-piege.com
+    B-->>A: Page avec formulaire caché<br/>action: POST /profile/update
+    Note over A: JS soumet le formulaire automatiquement
+    A->>V: POST /profile/update<br/>(avec cookie session)
+    Note over A,V: Cookie envoyé automatiquement<br/>car destination = vulnpyapp.local
+    V->>V: Pas de vérification CSRF<br/>requête traitée comme légitime
+    V-->>A: Profil modifié sans consentement
 ```
 
 ### 2.1.2 Exploitation
@@ -181,6 +190,14 @@ app.config.update(
 )
 ```
 
+**Détail des modes SameSite** :
+
+| Mode | Comportement | Protection CSRF |
+|------|-------------|-----------------|
+| `Strict` | Cookie jamais envoyé en cross-site | Maximale, mais peut casser les liens entrants |
+| `Lax` (défaut) | Cookie envoyé pour les navigations GET top-level | Bon équilibre par défaut |
+| `None` | Cookie envoyé pour toutes les requêtes | Aucune (nécessite `Secure` + HTTPS) |
+
 **Méthode 4 : Vérification d'origine**
 
 ```python
@@ -224,6 +241,22 @@ def update_user(user_id):
     db.session.commit()
     return jsonify(user.to_dict())
 # Un utilisateur peut modifier le compte d'un autre !
+```
+
+**Comparaison accès vulnérable vs sécurisé** : dans le cas vulnérable, la fonction ne vérifie pas le propriétaire de l'objet. Dans le cas sécurisé, la requête filtre par utilisateur courant.
+
+```mermaid
+graph TD
+    subgraph Vulnérable
+        V1[GET /api/orders/5] --> V2[Order.query.get(5)]
+        V2 --> V3[Retourne la commande<br/>sans vérifier le propriétaire]
+    end
+    subgraph Sécurisé
+        S1[GET /api/orders/5] --> S2[Order.query.filter_by<br/>id=5, user_id=current_user.id]
+        S2 --> S3{user_id correspond?}
+        S3 -->|Oui| S4[Retourne la commande]
+        S3 -->|Non| S5[403 Accès interdit]
+    end
 ```
 
 ### 2.2.3 Exploitation
@@ -358,7 +391,20 @@ def get_order(public_id):
 
 ### 2.3.1 Mass Assignment
 
-**Principe** : l'application accepte aveuglément tous les champs envoyés par l'utilisateur.
+**Principe** : l'application accepte aveuglément tous les champs envoyés par l'utilisateur. Si le modèle User a un champ sensible comme `is_admin`, l'attaquant peut injecter sa valeur dans la requête POST pour s'élever en privilèges.
+
+```mermaid
+graph LR
+    subgraph Attaque
+        A1[Inscription] --> A2[Champs normaux : email, password, name]
+        A2 --> A3[Champ injecté : is_admin=true]
+        A3 --> A4[User(**data) crée un compte admin]
+    end
+    subgraph Protection
+        B1[Inscription] --> B2[Schéma explicite<br/>extra = forbid]
+        B2 --> B3[Champ inconnu rejeté<br/>400 Bad Request]
+    end
+```
 
 ```python
 # 🚨 VULNÉRABLE - extrait de VulnPyApp app.py
@@ -594,6 +640,23 @@ hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
 from argon2 import PasswordHasher
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)
 hashed = ph.hash(password)
+```
+
+**Évolution des techniques** : chaque étape ajoute une couche de protection. Le sel empêche les rainbow tables, l'itération ralentit le bruteforce, Argon2 résiste aux attaques GPU/ASIC.
+
+```mermaid
+graph BT
+    C1[Stockage en clair] --> C2[MD5 sans sel]
+    C2 --> C3[SHA-256 sans sel]
+    C3 --> C4[SHA-256 + sel]
+    C4 --> C5[bcrypt rounds=12]
+    C5 --> C6[Argon2id]
+    C1 -. 0 seconde .-> T[Temps pour casser un mot de passe]
+    C2 -. secondes .-> T
+    C3 -. minutes .-> T
+    C4 -. heures .-> T
+    C5 -. jours .-> T
+    C6 -. années .-> T
 ```
 
 ### 2.4.2 Implémentation complète
@@ -867,6 +930,11 @@ def verify_mfa_setup():
     return jsonify({'error': 'Code invalide'}), 400
 ```
 
+**Facteurs d'authentification** : le MFA combine au moins deux facteurs parmi :
+- **Ce que je sais** : mot de passe, code PIN
+- **Ce que je possède** : smartphone (TOTP), clé de sécurité (FIDO2/WebAuthn)
+- **Ce que je suis** : empreinte digitale, reconnaissance faciale
+
 ---
 
 ## Module 2.5 - Sessions, cookies et headers (30 min)
@@ -1083,6 +1151,29 @@ def ratelimit_handler(e):
     }), 429
 ```
 
+**Stratégies de comptage** :
+- **Fixed Window** : compteur remis à zéro à intervalle fixe (ex. toutes les minutes) - simple mais peut laisser passer des pics en fin de fenêtre
+- **Sliding Window** : fenêtre glissante plus précise (ex. dernière minute glissante à tout instant) - recommandé pour les endpoints sensibles
+- **Token Bucket** : nombre fixe de tokens consommés par requête, régénérés périodiquement - lisse le trafic
+
+**Déroulement du rate limiting** : chaque requête est comptée par clé (IP, user_id, endpoint). Quand le seuil est dépassé, le serveur retourne 429 avec un en-tête Retry-After.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant L as Rate Limiter (Redis)
+    participant S as Application
+    C->>L: POST /login (IP: 1.2.3.4)
+    L->>L: Compteur : 1/5
+    L-->>S: OK
+    S-->>C: 200 OK
+    Note over C,L: Requêtes suivantes...
+    C->>L: POST /login (IP: 1.2.3.4)
+    L->>L: Compteur : 5/5 (seuil atteint)
+    L-->>S: BLOQUÉ
+    S-->>C: 429 Too Many Requests<br/>Retry-After: 60
+```
+
 ### 2.6.2 CAPTCHA (reCAPTCHA v3)
 
 ```python
@@ -1190,15 +1281,15 @@ class AnomalyDetector:
 
 ### 2.7.1 SDLC sécurisé
 
-```
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│   Conception │→ │ Développement│→ │     Test     │→ │  Déploiement │
-└──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘
-   Threat          - Code review     - SAST            - Hardening
-   modeling        - Linters         - DAST            - Secrets mgmt
-   Architecture    - Pre-commit      - Pen test        - Monitoring
-   review          - SCA             - Dependency      - Incident
-                                       audit             response
+```mermaid
+graph LR
+    C[Conception] --> D[Développement]
+    D --> T[Test]
+    T --> DEP[Déploiement]
+    C -.-> C1[Threat modeling<br/>Architecture review]
+    D -.-> D1[Code review<br/>Linters<br/>Pre-commit hooks<br/>SCA]
+    T -.-> T1[SAST<br/>DAST<br/>Pentest<br/>Dependency audit]
+    DEP -.-> DEP1[Hardening<br/>Secrets mgmt<br/>Monitoring<br/>Incident response]
 ```
 
 ### 2.7.2 Outils Python pour le SDLC sécurisé

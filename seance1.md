@@ -10,18 +10,33 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
 
 **Confidentialité (Confidentiality)**
 - Garantir que l'information n'est accessible qu'aux personnes autorisées
-- Mécanismes : chiffrement, contrôle d'accès, authentification
+- Mécanismes : chiffrement (TLS pour le transit, AES au repos), contrôle d'accès (RBAC, moindre privilège), authentification forte (MFA)
 - Exemple de violation : fuite de base de données utilisateurs
 
 **Intégrité (Integrity)**
 - Garantir que les données ne sont pas altérées de manière non autorisée
-- Mécanismes : hashage, signatures numériques, contrôles de version
+- Mécanismes : hashage (SHA-256, HMAC), signatures numériques (JWT, TLS), contraintes BDD (PK, FK, ACID), journalisation d'audit
 - Exemple de violation : modification non autorisée d'une transaction bancaire
 
 **Disponibilité (Availability)**
 - Garantir l'accès aux services pour les utilisateurs légitimes
-- Mécanismes : redondance, load balancing, protection DDoS
+- Mécanismes : redondance (N+1), load balancing, protection DDoS (WAF, rate limiting), PRA/PCA (backups chiffrés, restauration testée)
 - Exemple de violation : attaque par déni de service
+
+Les trois piliers sont interdépendants : un système qui garantit la confidentialité mais perd la disponibilité n'est pas sécurisé. Les mesures de sécurité doivent couvrir les trois axes simultanément.
+
+```mermaid
+graph LR
+    CIA[Sécurité de l'information] --> Conf[Confidentialité]
+    CIA --> Int[Intégrité]
+    CIA --> Disp[Disponibilité]
+    Conf --> C1[Chiffrement AES/TLS]
+    Conf --> C2[Contrôle d'accès RBAC]
+    Int --> I1[Hash SHA-256]
+    Int --> I2[Signatures numériques]
+    Disp --> D1[Redondance / Load balancing]
+    Disp --> D2[Protection DDoS]
+```
 
 ### 1.1.2 Concepts clés
 
@@ -42,6 +57,20 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
 - **Exploit** : technique pour tirer parti de la vulnérabilité
 - **Payload** : code malveillant exécuté via l'exploit
 
+**Chaîne d'attaque** : l'attaquant découvre une vulnérabilité, développe un exploit (script, outil) qui délivre un payload (code malveillant). Le payload est l'étape finale qui réalise l'objectif (exfiltration de données, élévation de privilèges, déni de service).
+
+```mermaid
+sequenceDiagram
+    participant A as Attaquant
+    participant S as Système cible
+    A->>A: Découvre une vulnérabilité
+    A->>A: Développe un exploit
+    A->>S: Envoie l'exploit
+    Note over S: Exploitation de la faille
+    S->>S: Exécute le payload
+    S-->>A: Données exfiltrées / Accès obtenu
+```
+
 ### 1.1.3 Principes Security by Design
 
 1. **Defense in depth** (défense en profondeur) : plusieurs couches de sécurité
@@ -53,10 +82,15 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
 
 ### 1.1.4 Cycle de vie d'une vulnérabilité
 
-```
-Découverte → Divulgation responsable → Publication CVE → Patch → Déploiement
-                                            ↓
-                                    Exploitation possible
+```mermaid
+graph LR
+    A[Découverte] --> B[Divulgation responsable]
+    B --> C[Publication CVE]
+    B --> D[Exploitation possible]
+    C --> E[Patch]
+    E --> F[Déploiement]
+    style D fill:#ff8888,stroke:#cc0000
+    style C fill:#ffcc00,stroke:#cc9900
 ```
 
 **CVE (Common Vulnerabilities and Exposures)** : référence standardisée
@@ -85,6 +119,22 @@ Le RGPD (Règlement Général sur la Protection des Données) impose des obligat
 **Article 25 - Privacy by Design and by Default**
 - Protection des données dès la conception
 - Paramètres protecteurs par défaut
+
+**Privacy by Design en pratique** :
+- **Minimisation** : ne stocker que les champs nécessaires (ex. âge au lieu de la date de naissance complète)
+- **Pseudonymisation** : remplacer l'email par un identifiant pseudonyme dans les logs applicatifs
+- **Sécurité par défaut** : profil privé, MFA proposé à l'inscription, désactivation du tracking
+- **Consentement tracé** : horodatage de chaque consentement, possibilité de révoquer à tout moment
+
+**Cycle de vie d'une donnée personnelle** :
+
+```mermaid
+graph LR
+    A[Collecte<br/>minimisation] --> B[Traitement<br/>base légale]
+    B --> C[Stockage<br/>chiffrement + accès limité]
+    C --> D[Conservation<br/>durée définie]
+    D --> E[Suppression<br/>ou anonymisation]
+```
 
 ### 1.2.2 Implémentation technique en Python
 
@@ -122,6 +172,21 @@ class User:
 - **Notification aux personnes concernées** : si risque élevé
 - **Documentation** : registre des violations
 - **Sanctions** : jusqu'à 4% du CA mondial ou 20M€
+
+**Processus de notification** :
+
+```mermaid
+graph TD
+    F[Violation de données<br/>détectée] --> Eval{Risque pour<br/>les droits?}
+    Eval -->|Non| Doc[Documentation interne<br/>registre des violations]
+    Eval -->|Oui| CNIL[Notification CNIL<br/>sous 72h]
+    CNIL --> Eval2{Risque élevé?}
+    Eval2 -->|Oui| Users[Notification personnes<br/>concernées sans délai]
+    Eval2 -->|Non| Doc
+    Users --> Doc
+    style CNIL fill:#ffcc00,stroke:#cc9900
+    style Users fill:#ff8888,stroke:#cc0000
+```
 
 ---
 
@@ -284,6 +349,20 @@ SELECT * FROM users WHERE email = 'admin@vulnpyapp.local' --' AND password_hash 
 -- Le -- transforme la suite en commentaire SQL
 ```
 
+**Fonctionnement** : sans paramétrage, l'input utilisateur est concaténé directement dans la requête SQL. Il devient partie intégrante de la commande, ce qui permet de modifier la logique (bypass du WHERE, UNION vers d'autres tables, appels de fonctions).
+
+```mermaid
+graph LR
+    subgraph Requête normale
+        IN1[Email: alice@mail.com] --> Q1[SELECT * FROM users<br/>WHERE email = 'alice@mail.com']
+        Q1 --> R1[Retourne utilisateur alice]
+    end
+    subgraph Requête injectée
+        IN2[Email: admin@mail.com' --] --> Q2[SELECT * FROM users<br/>WHERE email = 'admin@mail.com' --']
+        Q2 --> R2[Bypass du mot de passe<br/>Connexion en tant qu'admin]
+    end
+```
+
 ### 1.4.2 Types d'injections SQL
 
 **1. Injection in-band (classique)**
@@ -296,6 +375,21 @@ SELECT * FROM users WHERE email = 'admin@vulnpyapp.local' --' AND password_hash 
 
 **3. Injection out-of-band**
 - Exfiltration via canal externe (DNS, HTTP)
+
+**Choix de la technique** : si l'application affiche des erreurs SQL ou les résultats, on utilise les techniques in-band. Si la réponse est muette, on passe en blind (déduction par vrai/faux ou temporisation). L'out-of-band est utilisé quand on ne peut pas recevoir la réponse directement.
+
+```mermaid
+graph TD
+    SQL[Injection SQL] --> IB[In-Band]
+    SQL --> BL[Blind / Aveugle]
+    SQL --> OOB[Out-of-Band]
+    IB --> E1[Error-based : messages d'erreur SQL]
+    IB --> E2[UNION-based : résultats dans la réponse]
+    BL --> B1[Boolean-based : page vraie ou fausse]
+    BL --> B2[Time-based : délai d'exécution]
+    OOB --> O1[Exfiltration DNS]
+    OOB --> O2[Exfiltration HTTP]
+```
 
 ### 1.4.3 Exploitation pratique
 
@@ -512,6 +606,12 @@ def login():
 
 Le XSS permet d'injecter du JavaScript exécuté dans le navigateur d'autres utilisateurs.
 
+**Impacts classiques** :
+- Vol de cookies de session (si non `HttpOnly`)
+- Défiguration de page, redirection vers des sites de phishing
+- Keylogging et capture des frappes utilisateur
+- Actions non autorisées via les API (changement de mot de passe, transactions)
+
 **Reflected XSS** : le payload est dans la requête, immédiatement reflété dans la réponse
 ```python
 # 🚨 VULNÉRABLE
@@ -546,6 +646,30 @@ def show_comments():
 const params = new URLSearchParams(window.location.search);
 document.getElementById('welcome').innerHTML = 'Bonjour ' + params.get('name');
 // /page?name=<img src=x onerror=alert(1)>
+```
+
+**Différence entre les trois types** : le XSS reflété est non persistant (transmis via un lien), le XSS stocké persiste en base de données et touche tous les visiteurs, le XSS DOM-based ne quitte jamais le navigateur (manipulation du DOM local).
+
+```mermaid
+graph TD
+    subgraph Reflected
+        A1[Attaquant envoie un lien piégé] --> A2[Victime clique]
+        A2 --> A3[Payload dans l'URL]
+        A3 --> A4[Reflété dans la réponse HTML]
+        A4 --> A5[Script exécuté<br/>Victime unique]
+    end
+    subgraph Stored
+        B1[Attaquant poste un commentaire] --> B2[Payload stocké en BDD]
+        B2 --> B3[Chaque visiteur charge la page]
+        B3 --> B4[Payload chargé depuis la BDD]
+        B4 --> B5[Script exécuté<br/>Tous les visiteurs]
+    end
+    subgraph DOM-based
+        C1[URL avec paramètre/fragment] --> C2[Page statique chargée]
+        C2 --> C3[JS lit location.hash / paramètre]
+        C3 --> C4[innerHTML injecte le code]
+        C4 --> C5[Script exécuté<br/>Côté client uniquement]
+    end
 ```
 
 ### 1.5.2 Exploitation pratique
@@ -708,6 +832,14 @@ https://app.com           ❌ différente de       https://api.app.com (sous-dom
 https://app.com:443       ❌ différente de       https://app.com:8443 (port)
 ```
 
+```mermaid
+graph LR
+    O1[https://app.com:443/page1] -- Même origine --> O2[https://app.com:443/page2]
+    O1 -- Protocole différent --> O3[http://app.com:443]
+    O1 -- Domaine différent --> O4[https://api.app.com:443]
+    O1 -- Port différent --> O5[https://app.com:8443]
+```
+
 ### 1.6.2 CORS (Cross-Origin Resource Sharing)
 
 Mécanisme contrôlé pour autoriser des requêtes cross-origin légitimes.
@@ -736,6 +868,11 @@ CORS(app,
 CORS(app, origins="*", supports_credentials=True)
 # Combinaison * + credentials = catastrophe sécurité
 ```
+
+**Quand un preflight est-il déclenché ?** Le navigateur envoie une requête OPTIONS préliminaire pour les requêtes dites *non simples* :
+- Méthode autre que GET, POST, HEAD
+- Headers personnalisés (Authorization, X-Requested-With...)
+- Content-Type différent de `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`
 
 ### 1.6.3 Content Security Policy (CSP)
 
@@ -797,6 +934,23 @@ def set_security_headers(response):
 | **CORS** | Exceptions contrôlées à SOP | Headers serveur |
 | **CSP** | Whitelist de sources de contenu | Header HTTP ou meta |
 | **HSTS** | Force HTTPS | Header `Strict-Transport-Security` |
+```
+
+**Séquence d'appel cross-origin avec CORS** : le navigateur envoie d'abord une requête preflight OPTIONS pour vérifier les droits, puis la requête réelle si autorisée.
+
+```mermaid
+sequenceDiagram
+    participant N as Navigateur (app.com)
+    participant S as Serveur (api.app.com)
+    N->>S: OPTIONS /data (preflight)
+    Note over N,S: Origin: https://app.com<br/>Access-Control-Request-Method: GET
+    S-->>N: 200 OK
+    Note over S: Access-Control-Allow-Origin: https://app.com
+    N->>S: GET /data (requête réelle)
+    Note over N,S: Origin: https://app.com
+    S-->>N: 200 + Access-Control-Allow-Origin: https://app.com
+    N->>N: Réponse acceptée, JS peut lire les données
+```
 
 ---
 
