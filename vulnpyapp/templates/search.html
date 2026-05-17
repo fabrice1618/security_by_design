@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Product search</h1>
+<form method="GET">
+    <input name="q" value="{{ query }}" placeholder="search...">
+    <button>Search</button>
+</form>
+
+{% if query %}
+    <!-- 🚨 VULNÉRABLE : |safe désactive l'échappement -->
+    <p>Results for: {{ query|safe }}</p>
+{% endif %}
+
+<ul>
+{% for r in results %}
+    <li>{{ r[1] }} - {{ r[3] }}€</li>
+{% endfor %}
+</ul>
+{% endblock %}

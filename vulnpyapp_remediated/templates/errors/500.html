@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Server Error{% endblock %}
+{% block content %}
+<h1>500 - Internal Server Error</h1>
+{# ✅ Message générique : aucune trace technique exposée #}
+<p>An unexpected error occurred. Our team has been notified.</p>
+<a href="{{ url_for('index') }}">← Back to home</a>
+{% endblock %}

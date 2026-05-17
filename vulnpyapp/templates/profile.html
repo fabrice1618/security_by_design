@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Profile of {{ user.username }}</h1>
+<p>Email: {{ user.email }}</p>
+<p>Bio: {{ user.bio }}</p>
+
+<h2>Update profile</h2>
+<!-- 🚨 VULNÉRABLE : pas de token CSRF -->
+<form method="POST" action="{{ url_for('update_profile') }}">
+    <label>Username: <input name="username" value="{{ user.username }}"></label><br>
+    <label>Bio: <textarea name="bio">{{ user.bio }}</textarea></label><br>
+    <button>Update</button>
+</form>
+
+<!-- 🚨 VULN #5 : XSS DOM-based -->
+<h2>Welcome message</h2>
+<div id="welcome"></div>
+<script>
+    // 🚨 VULNÉRABLE : injection DOM via hash de l'URL
+    const name = decodeURIComponent(location.hash.substring(1)) || "{{ user.username }}";
+    document.getElementById('welcome').innerHTML = "Hello, " + name + "!";
+</script>
+{% endblock %}

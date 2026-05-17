@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Product search</h1>
+<form method="GET">
+    <input name="q" value="{{ query }}" placeholder="search..." maxlength="100">
+    <button>Search</button>
+</form>
+
+{% if query %}
+    {# ✅ Pas de |safe : Jinja2 échappe automatiquement #}
+    <p>Results for: <strong>{{ query }}</strong></p>
+{% endif %}
+
+<ul>
+{% for r in results %}
+    <li>{{ r.name }} - {{ r.price }}€</li>
+{% endfor %}
+</ul>
+{% endblock %}

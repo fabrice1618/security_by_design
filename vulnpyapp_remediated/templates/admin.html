@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+{% block content %}
+<h1>Admin Panel</h1>
+<p>Logged in as: <strong>{{ current_user.username }}</strong> (admin)</p>
+
+<h2>Users ({{ users|length }})</h2>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Email</th>
+            <th>Username</th>
+            <th>Admin</th>
+            <th>Locked until</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for u in users %}
+        <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.username }}</td>
+            <td>{{ 'Yes' if u.is_admin else 'No' }}</td>
+            <td>{{ u.locked_until or '-' }}</td>
+            <td>{{ u.created_at }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

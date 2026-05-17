@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
+      - LOG_LEVEL=INFO
+    # ✅ Pas de capabilities inutiles
+    cap_drop:
+      - ALL
+    # ✅ Filesystem en lecture seule sauf uploads
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - uploads_data:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  uploads_data:

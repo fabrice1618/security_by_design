@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Welcome to VulnPyApp 🐍🔓</h1>
+<p><strong>Educational application (v2.0 remediated)</strong></p>
+
+<h2>Our products</h2>
+<ul>
+{% for product in products %}
+    <li>
+        <strong>{{ product.name }}</strong> - {{ product.price }}€
+        <br><em>{{ product.description }}</em>
+    </li>
+{% endfor %}
+</ul>
+{% endblock %}

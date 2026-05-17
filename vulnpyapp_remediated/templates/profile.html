@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Profile of {{ user.username }}</h1>
+<p>Email: {{ user.email }}</p>
+<p>Bio: {{ user.bio|safe }}</p>  {# ✅ |safe acceptable car bio est déjà sanitisée par Bleach #}
+
+<h2>Update profile</h2>
+<form method="POST" action="{{ url_for('update_profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username: <input name="username" value="{{ user.username }}" pattern="[a-zA-Z0-9_-]{3,80}"></label><br>
+    <label>Bio: <textarea name="bio" maxlength="500">{{ user.bio }}</textarea></label><br>
+    <button>Update</button>
+</form>
+
+<h2>Welcome message</h2>
+<div id="welcome"></div>
+<script nonce="{{ csp_nonce() }}">
+    // ✅ textContent + pas d'usage de location.hash
+    const username = {{ user.username|tojson }};
+    document.getElementById('welcome').textContent = "Hello, " + username + "!";
+</script>
+{% endblock %}

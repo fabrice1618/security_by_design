@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Ping{% endblock %}
+{% block content %}
+<h1>Network Ping</h1>
+<form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>
+        Hostname:
+        <input type="text" name="host" required
+               pattern="[a-zA-Z0-9.\-]{1,253}"
+               placeholder="example.com"
+               maxlength="253">
+    </label>
+    <button type="submit">Ping</button>
+</form>
+
+{% if error %}
+    <p class="error">{{ error }}</p>
+{% endif %}
+
+{% if result %}
+    <h2>Result for {{ host }}:</h2>
+    {# ✅ Échappement automatique - pas de |safe #}
+    <pre>{{ result }}</pre>
+{% endif %}
+{% endblock %}

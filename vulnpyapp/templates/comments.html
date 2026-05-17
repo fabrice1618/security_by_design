@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Comments</h1>
+
+{% if current_user.is_authenticated %}
+<form method="POST">
+    <textarea name="content" required placeholder="Your comment..."></textarea><br>
+    <button>Post</button>
+</form>
+{% else %}
+<p><a href="{{ url_for('login') }}">Login</a> to comment.</p>
+{% endif %}
+
+<hr>
+{% for c in comments %}
+    <div class="comment">
+        <strong>{{ c.author.username }}</strong>
+        <small>{{ c.created_at }}</small>
+        <!-- 🚨 VULNÉRABLE : XSS stored via |safe -->
+        <p>{{ c.content|safe }}</p>
+    </div>
+{% endfor %}
+{% endblock %}

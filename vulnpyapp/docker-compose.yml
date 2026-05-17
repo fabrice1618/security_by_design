@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  vulnpyapp:
+    build: .
+    container_name: vulnpyapp
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=insecure-dev-key-do-not-use-in-prod
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - vulnnet
+
+networks:
+  vulnnet:
+    driver: bridge

