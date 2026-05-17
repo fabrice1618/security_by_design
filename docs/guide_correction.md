@@ -28,19 +28,21 @@ Approche recommandée :
 
 ### Localisation
 ```
-Fichier : app.py
+Fichier : vulnpyapp/app.py
 Fonction : login()
-Ligne : ~45
+Ligne : ~38
 ```
 
 ### Code vulnérable
 ```python
-# ❌ VULNÉRABLE - Concaténation directe dans la requête SQL
-email = request.form['email']
-password = request.form['password']
+# ❌ VULNÉRABLE - Concaténation directe dans la requête SQL + hash MD5
+email = request.form.get('email', '')
+password = request.form.get('password', '')
 
+password_hash = hashlib.md5(password.encode()).hexdigest()
 query = f"SELECT * FROM users WHERE email = '{email}' AND password_hash = '{password_hash}'"
-user = db.session.execute(query).fetchone()
+
+result = db.session.execute(text(query)).fetchone()
 ```
 
 ### Pourquoi c'est dangereux
@@ -49,7 +51,7 @@ Saisie attaquant dans le champ email :
   ' OR '1'='1' --
 
 Requête résultante :
-  SELECT * FROM user WHERE email = '' OR '1'='1' --' AND password = '...'
+  SELECT * FROM users WHERE email = '' OR '1'='1' --' AND password_hash = '...'
 
 La condition '1'='1' est toujours vraie.
 Le commentaire -- neutralise le reste.
@@ -69,27 +71,32 @@ paramétrise automatiquement. Utilisez User.query.filter_by()
 plutôt que db.session.execute() avec du SQL brut.
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/app.py)
 ```python
-# ✅ CORRIGÉ - Méthode 1 : ORM SQLAlchemy (recommandé)
-from models import User
+# ✅ CORRIGÉ - Méthode 1 : ORM SQLAlchemy + schéma de validation
+from schemas import LoginSchema
+from marshmallow import ValidationError
 
-email = request.form.get('email', '').strip()
-password = request.form.get('password', '')
+try:
+    data = LoginSchema().load(request.form.to_dict())
+except ValidationError:
+    return render_template('login.html', error='Invalid input'), 400
 
 # L'ORM construit une requête paramétrée automatiquement
-user = User.query.filter_by(email=email).first()
+user = User.query.filter_by(email=data['email']).first()
 
-if user is None or not user.check_password(password):
-    flash('Invalid credentials', 'error')
-    return redirect(url_for('login'))
+if user and user.check_password(data['password']):
+    login_user(user, remember=False)
+    return redirect(url_for('profile'))
+
+return render_template('login.html', error='Invalid credentials'), 401
 ```
 
 ```python
-# ✅ CORRIGÉ - Méthode 2 : Requête paramétrée explicite
+# ✅ CORRIGÉ - Méthode 2 : Requête paramétrée explicite (text + bind params)
 from sqlalchemy import text
 
-query = text("SELECT * FROM user WHERE email = :email")
+query = text("SELECT * FROM users WHERE email = :email")
 result = db.session.execute(query, {'email': email}).fetchone()
 ```
 
@@ -116,18 +123,17 @@ CVSS v3.1 : AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H → Score 9.8 (Critical)
 
 ### Localisation
 ```
-Fichier : app.py
+Fichier : vulnpyapp/app.py
 Fonction : search()
-Ligne : ~80
+Ligne : ~91
 ```
 
 ### Code vulnérable
 ```python
 # ❌ VULNÉRABLE
-q = request.args.get('q', '')
-results = db.session.execute(
-    f"SELECT * FROM products WHERE name LIKE '%{q}%'"
-).fetchall()
+query_param = request.args.get('q', '')
+sql = f"SELECT * FROM products WHERE name LIKE '%{query_param}%'"
+results = db.session.execute(text(sql)).fetchall()
 ```
 
 ### Exploitation (UNION-based)
@@ -142,20 +148,19 @@ id,email,password_hash,4,5 FROM users--%'
 -- Résultat : dump de la table users dans les résultats de recherche
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/app.py)
 ```python
 # ✅ CORRIGÉ
-from models import Product
+query_param = (request.args.get('q', '') or '').strip()[:100]  # Limitation longueur
+results = []
 
-q = request.args.get('q', '').strip()[:100]  # Limitation longueur
-
-if q:
+if query_param:
     # ilike = LIKE insensible à la casse, paramétré automatiquement
     results = Product.query.filter(
-        Product.name.ilike(f'%{q}%')
+        Product.name.ilike(f"%{query_param}%")
     ).limit(50).all()
-else:
-    results = Product.query.limit(50).all()
+
+return render_template('search.html', query=query_param, results=results)
 ```
 
 ### Vérification
@@ -169,14 +174,14 @@ pytest tests/test_security.py::TestSQLInjection -v
 
 ### Localisation
 ```
-Fichier : templates/search.html
-Ligne : ~15
+Fichier : vulnpyapp/templates/search.html
+Ligne : ~11
 ```
 
 ### Code vulnérable
 ```html
 <!-- ❌ VULNÉRABLE - |safe désactive l'échappement Jinja2 -->
-<p>Résultats pour : <strong>{{ query|safe }}</strong></p>
+<p>Results for: {{ query|safe }}</p>
 ```
 
 ### Exploitation
@@ -193,10 +198,10 @@ Jinja2 échappe automatiquement les variables.
 Cherchez ce qui désactive cette protection.
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/templates/search.html)
 ```html
 <!-- ✅ CORRIGÉ - Supprimer |safe suffit -->
-<p>Résultats pour : <strong>{{ query }}</strong></p>
+<p>Results for: {{ query }}</p>
 
 <!--
   Jinja2 convertit automatiquement :
@@ -232,21 +237,21 @@ pytest tests/test_security.py::TestXSS::test_xss_reflected_escaped -v
 
 ### Localisation
 ```
-Fichier : app.py → route /comments (POST)
-Fichier : templates/comments.html → affichage
+Fichier : vulnpyapp/app.py → route /comments (POST), ligne ~112
+Fichier : vulnpyapp/templates/comments.html → ligne ~20
 ```
 
 ### Code vulnérable
 ```python
 # ❌ VULNÉRABLE - Stockage sans sanitization
-content = request.form['content']
+content = request.form.get('content', '')
 comment = Comment(user_id=current_user.id, content=content)
 db.session.add(comment)
 ```
 
 ```html
 <!-- ❌ VULNÉRABLE - Affichage avec |safe -->
-<div>{{ c.content|safe }}</div>
+<p>{{ c.content|safe }}</p>
 ```
 
 ### Exploitation
@@ -261,35 +266,51 @@ db.session.add(comment)
 
 ### ✅ Solution complète
 
-**Étape 1 : Sanitizer à l'entrée (Bleach)**
+**Étape 1 : Sanitizer à l'entrée (Bleach) — vulnpyapp_remediated/security.py**
 ```python
-# ✅ Dans app.py
+# ✅ Dans security.py - helper réutilisable
 import bleach
 
-# Liste blanche de tags HTML autorisés
-ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'p', 'br', 'ul', 'ol', 'li']
-ALLOWED_ATTRIBUTES = {}  # Aucun attribut autorisé (évite onerror, href, etc.)
+ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li']
+ALLOWED_ATTRS = {'a': ['href', 'title']}
+ALLOWED_PROTOCOLS = ['http', 'https', 'mailto']
 
-@app.route('/comments', methods=['POST'])
-@login_required
-def post_comment():
-    content = request.form.get('content', '').strip()
-
-    if not content or len(content) > 2000:
-        abort(400)
-
-    # ✅ Sanitization : seuls les tags autorisés sont conservés
-    clean_content = bleach.clean(
+def sanitize_html(content: str) -> str:
+    """Nettoie le HTML utilisateur avec une allowlist stricte"""
+    if not content:
+        return ''
+    return bleach.clean(
         content,
         tags=ALLOWED_TAGS,
-        attributes=ALLOWED_ATTRIBUTES,
-        strip=True  # Supprime les tags non autorisés (ne les échappe pas)
+        attributes=ALLOWED_ATTRS,
+        protocols=ALLOWED_PROTOCOLS,
+        strip=True  # Supprime les tags non autorisés
     )
+```
 
-    comment = Comment(user_id=current_user.id, content=clean_content)
-    db.session.add(comment)
-    db.session.commit()
-    return redirect(url_for('comments'))
+```python
+# ✅ Dans app.py - route /comments POST
+from security import sanitize_html
+from schemas import CommentSchema
+
+@app.route('/comments', methods=['GET', 'POST'])
+def comments():
+    if request.method == 'POST':
+        if not current_user.is_authenticated:
+            return redirect(url_for('login'))
+
+        try:
+            data = CommentSchema().load(request.form.to_dict())
+        except ValidationError:
+            flash('Invalid comment', 'error')
+            return redirect(url_for('comments'))
+
+        clean_content = sanitize_html(data['content'])
+
+        comment = Comment(user_id=current_user.id, content=clean_content)
+        db.session.add(comment)
+        db.session.commit()
+        return redirect(url_for('comments'))
 ```
 
 **Étape 2 : Affichage sécurisé**
@@ -322,8 +343,8 @@ pytest tests/test_security.py::TestXSS::test_xss_allowed_tags_preserved -v
 
 ### Localisation
 ```
-Fichier : templates/profile.html
-Balise : <script> utilisant location.hash
+Fichier : vulnpyapp/templates/profile.html
+Lignes : ~20-21 (script utilisant location.hash + innerHTML)
 ```
 
 ### Code vulnérable
@@ -332,8 +353,8 @@ Balise : <script> utilisant location.hash
 <div id="welcome"></div>
 <script>
   // location.hash retourne la valeur après le # sans encodage
-  const name = location.hash.slice(1);
-  document.getElementById('welcome').innerHTML = name;  // ← dangereux !
+  const name = decodeURIComponent(location.hash.substring(1)) || "{{ user.username }}";
+  document.getElementById('welcome').innerHTML = "Hello, " + name + "!";  // ← dangereux !
 </script>
 
 <!--
@@ -343,7 +364,7 @@ Balise : <script> utilisant location.hash
 -->
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/templates/profile.html)
 ```html
 <!-- ✅ CORRIGÉ -->
 <div id="welcome"></div>
@@ -355,6 +376,7 @@ Balise : <script> utilisant location.hash
 
   // ✅ tojson encode la chaîne pour une insertion sûre dans JS
   // Pas de location.hash - la valeur vient du serveur (authentifié)
+  // ✅ nonce CSP fourni par Flask-Talisman (extensions.py)
 </script>
 ```
 
@@ -376,8 +398,8 @@ setTimeout(string)  addEventListener()
 
 ### Localisation
 ```
-Fichier : app.py → toutes les routes POST
-Fichier : templates/*.html → formulaires
+Fichier : vulnpyapp/app.py → toutes les routes POST (update_profile ligne ~139)
+Fichier : vulnpyapp/templates/*.html → formulaires
 ```
 
 ### Code vulnérable
@@ -386,8 +408,8 @@ Fichier : templates/*.html → formulaires
 @app.route('/profile/update', methods=['POST'])
 @login_required
 def update_profile():
-    username = request.form['username']
-    current_user.username = username
+    current_user.bio = request.form.get('bio', '')
+    current_user.username = request.form.get('username', current_user.username)
     db.session.commit()
     # N'importe quel site peut soumettre ce formulaire à la place de l'utilisateur
 ```
@@ -407,18 +429,19 @@ def update_profile():
 
 ### ✅ Solution complète
 
-**Étape 1 : Initialiser Flask-WTF**
+**Étape 1 : Initialiser Flask-WTF (vulnpyapp_remediated/extensions.py)**
 ```python
 # ✅ extensions.py
 from flask_wtf.csrf import CSRFProtect
 
 csrf = CSRFProtect()
 
-# ✅ app.py
+# ✅ app.py (factory create_app)
 from extensions import csrf
 
 def create_app(config_name='default'):
     app = Flask(__name__)
+    app.config.from_object(config[config_name])
     csrf.init_app(app)  # Protection CSRF globale sur tous les POST
     return app
 ```
@@ -470,9 +493,9 @@ pytest tests/test_security.py::TestCSRF -v
 
 ### Localisation
 ```
-Fichier : app.py
-Fonction : get_order()
-Route : /api/orders/<int:order_id>
+Fichier : vulnpyapp/app.py
+Fonction : get_order() ligne ~152, get_user() ligne ~162
+Routes : /api/orders/<int:order_id> , /api/users/<int:user_id>
 ```
 
 ### Code vulnérable
@@ -481,7 +504,9 @@ Route : /api/orders/<int:order_id>
 @app.route('/api/orders/<int:order_id>')
 @login_required
 def get_order(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({'error': 'Not found'}), 404
     return jsonify(order.to_dict())  # N'importe quel utilisateur connecté
                                       # peut accéder à n'importe quelle commande
 ```
@@ -500,24 +525,24 @@ response = session.get('/api/orders/42')
 print(response.json())  # Données de Bob exposées
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/app.py)
 ```python
 # ✅ CORRIGÉ - Filtrage par propriétaire
 @app.route('/api/orders/<int:order_id>')
 @login_required
 def get_order(order_id):
-    if current_user.is_admin:
-        # Les admins peuvent voir toutes les commandes
-        order = Order.query.get_or_404(order_id)
-    else:
-        # Un utilisateur ne voit que SES commandes
-        # filter_by sur les deux critères → 404 si pas propriétaire
-        order = Order.query.filter_by(
-            id=order_id,
-            user_id=current_user.id
-        ).first_or_404()
-        # ✅ first_or_404() retourne 404 (et non 403) pour ne pas
-        # confirmer l'existence de la ressource
+    # ✅ Filtre direct par user_id : aucune fuite possible
+    order = Order.query.filter_by(
+        id=order_id,
+        user_id=current_user.id
+    ).first()
+
+    # Les admins peuvent voir toutes les commandes
+    if not order and current_user.is_admin:
+        order = Order.query.get(order_id)
+
+    if not order:
+        abort(404)  # 404 plutôt que 403 : ne pas confirmer l'existence
 
     return jsonify(order.to_dict())
 
@@ -526,6 +551,7 @@ def get_order(order_id):
 @app.route('/api/my/orders')
 @login_required
 def my_orders():
+    """Pas d'ID exposé : préféré pour les usages courants"""
     orders = Order.query.filter_by(user_id=current_user.id).all()
     return jsonify([o.to_dict() for o in orders])
 ```
@@ -533,15 +559,17 @@ def my_orders():
 ### Même vulnérabilité sur `/api/users/<id>`
 
 ```
-Fichier : app.py, fonction get_user(), ligne ~162
+Fichier : vulnpyapp/app.py, fonction get_user(), ligne ~162
 Route : /api/users/<int:user_id>
 ```
 
 ```python
 # ❌ MÊME DÉFAUT : pas de vérification de propriétaire
 user = User.query.get(user_id)
+if not user:
+    return jsonify({'error': 'Not found'}), 404
 return jsonify(user.to_dict())
-# Tout utilisateur connecté peut voir les données de n'importe qui
+# Tout utilisateur connecté peut voir email + is_admin de n'importe qui
 ```
 
 ```python
@@ -551,11 +579,16 @@ return jsonify(user.to_dict())
 def get_user(user_id):
     user = User.query.get_or_404(user_id)
 
-    # Seul le propriétaire voit email + is_admin
-    if current_user.id == user.id or current_user.is_admin:
-        return jsonify(user.to_dict())
-    else:
-        return jsonify(user.to_safe_dict())  # username, bio seulement
+    # Seul le propriétaire ou un admin voit email + is_admin
+    if current_user.id != user.id and not current_user.is_admin:
+        # ✅ Données publiques uniquement (id, username, bio)
+        return jsonify(user.to_safe_dict())
+
+    return jsonify({
+        **user.to_safe_dict(),
+        'email': user.email,
+        'is_admin': user.is_admin
+    })
 ```
 
 ### Principe général
@@ -583,20 +616,23 @@ pytest tests/test_security.py::TestIDOR -v
 
 ### Localisation
 ```
-Fichier : app.py
+Fichier : vulnpyapp/app.py
 Fonction : register()
+Ligne : ~70
 Route : /register (POST)
 ```
 
 ### Code vulnérable
 ```python
 # ❌ VULNÉRABLE - Assignation directe des données du formulaire au modèle
-@app.route('/register', methods=['POST'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    data = request.form.to_dict()
-    user = User(**data)  # Tous les champs du formulaire → modèle
-    db.session.add(user)
-    db.session.commit()
+    if request.method == 'POST':
+        data = request.form.to_dict()
+        user = User(**{k: v for k, v in data.items() if k != 'password'})
+        user.set_password(data.get('password', ''))
+        db.session.add(user)
+        db.session.commit()
 
 # Payload attaquant :
 # email=hack@x.com&username=hacker&password=Hack123!&is_admin=true
@@ -630,70 +666,91 @@ def register():
     db.session.commit()
 ```
 
-**Méthode 2 : Schéma Marshmallow (robuste)**
+**Méthode 2 : Schéma Marshmallow (robuste) — vulnpyapp_remediated/schemas.py**
 ```python
 # ✅ schemas.py
-from marshmallow import Schema, fields, validate, ValidationError
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 class RegisterSchema(Schema):
-    """Seuls ces champs sont acceptés - tout autre champ est ignoré"""
-    email    = fields.Email(required=True, load_only=True)
-    username = fields.Str(required=True, validate=[
-        validate.Length(min=3, max=80),
-        validate.Regexp(r'^[a-zA-Z0-9_-]+$',
-                        error='Username: letters, digits, _ and - only')
-    ])
-    password = fields.Str(required=True, load_only=True, validate=[
-        validate.Length(min=8, max=128),
-        validate.Regexp(
-            r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)',
-            error='Password must contain uppercase, lowercase and digit'
-        )
-    ])
-    bio = fields.Str(validate=validate.Length(max=500), load_default='')
+    """Allowlist stricte : is_admin n'est PAS exposé"""
+    class Meta:
+        unknown = EXCLUDE  # ✅ Ignore tout champ non déclaré
+
+    email = fields.Email(required=True, validate=validate.Length(max=120))
+    username = fields.String(
+        required=True,
+        validate=[
+            validate.Length(min=3, max=80),
+            validate.Regexp(r'^[a-zA-Z0-9_-]+$',
+                            error="Username: alphanumeric, _ or - only")
+        ]
+    )
+    password = fields.String(
+        required=True,
+        validate=[
+            validate.Length(min=8, max=128),
+            validate.Regexp(
+                r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).+$',
+                error="Password must contain uppercase, lowercase and digit"
+            )
+        ],
+        load_only=True
+    )
+    bio = fields.String(load_default='', validate=validate.Length(max=500))
 
     # ✅ is_admin n'apparaît pas → automatiquement ignoré à la désérialisation
 
+
 class ProfileUpdateSchema(Schema):
-    """Mise à jour de profil : restreint aux champs modifiables"""
-    username = fields.Str(validate=[
+    """Mise à jour de profil : seuls username et bio modifiables"""
+    class Meta:
+        unknown = EXCLUDE
+
+    username = fields.String(validate=[
         validate.Length(min=3, max=80),
         validate.Regexp(r'^[a-zA-Z0-9_-]+$')
     ])
-    bio = fields.Str(validate=validate.Length(max=500))
+    bio = fields.String(validate=validate.Length(max=500))
     # email et is_admin absents → ignorés même s'ils sont envoyés
 ```
 
 ```python
-# ✅ Dans app.py
+# ✅ Dans vulnpyapp_remediated/app.py
 from schemas import RegisterSchema
 from marshmallow import ValidationError
+from security import sanitize_html
 
-register_schema = RegisterSchema()
-
-@app.route('/register', methods=['POST'])
+@app.route('/register', methods=['GET', 'POST'])
+@limiter.limit("3 per minute", methods=['POST'])
 def register():
-    try:
-        data = register_schema.load(request.form)
-    except ValidationError as err:
-        flash(str(err.messages), 'error')
-        return redirect(url_for('register'))
+    if request.method == 'POST':
+        try:
+            data = RegisterSchema().load(request.form.to_dict())
+        except ValidationError as err:
+            return render_template('register.html', errors=err.messages), 400
 
-    if User.query.filter_by(email=data['email']).first():
-        flash('Email already registered', 'error')
-        return redirect(url_for('register'))
+        if User.query.filter_by(email=data['email']).first():
+            return render_template(
+                'register.html',
+                errors={'email': ['Already registered']}
+            ), 409
 
-    user = User(
-        email=data['email'],
-        username=data['username'],
-        bio=data.get('bio', ''),
-        is_admin=False  # Jamais depuis le formulaire
-    )
-    user.set_password(data['password'])
-    db.session.add(user)
-    db.session.commit()
-    flash('Registration successful', 'success')
-    return redirect(url_for('login'))
+        # ✅ Construction explicite : is_admin JAMAIS modifiable
+        user = User(
+            email=data['email'],
+            username=data['username'],
+            bio=sanitize_html(data.get('bio', '')),
+            is_admin=False  # toujours False à l'inscription
+        )
+        user.set_password(data['password'])
+
+        db.session.add(user)
+        db.session.commit()
+
+        login_user(user)
+        return redirect(url_for('profile'))
+
+    return render_template('register.html')
 ```
 
 ### Vérification
@@ -707,8 +764,9 @@ pytest tests/test_security.py::TestMassAssignment -v
 
 ### Localisation
 ```
-Fichier : app.py
+Fichier : vulnpyapp/app.py
 Fonction : hello()
+Ligne : ~175
 Route : /hello
 ```
 
@@ -721,7 +779,8 @@ from jinja2 import Template
 def hello():
     name = request.args.get('name', 'World')
     # Template construit avec la valeur utilisateur → exécuté par Jinja2
-    template = Template(f"Hello {name}!")
+    template_str = f"<h1>Hello {name}!</h1>"
+    template = Template(template_str)
     return template.render()
 ```
 
@@ -741,20 +800,15 @@ def hello():
   → Résultat : uid=0(root)...
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/app.py)
 ```python
 # ✅ CORRIGÉ - Méthode 1 : render_template avec variable (recommandé)
 @app.route('/hello')
 def hello():
-    name = request.args.get('name', 'World')
-
-    # Validation : nom alphanumérique uniquement
-    if not re.match(r'^[a-zA-Z0-9 _-]{1,50}$', name):
-        name = 'World'  # Valeur par défaut sécurisée
-
+    name = (request.args.get('name', 'World') or 'World')[:50]
     # ✅ La variable est passée comme paramètre, jamais concaténée dans le template
+    # Jinja2 échappe automatiquement {{ name }} → ni SSTI ni XSS
     return render_template('hello.html', name=name)
-    # Jinja2 échappe automatiquement {{ name }}
 ```
 
 ```python
@@ -793,8 +847,9 @@ pytest tests/test_security.py::TestSSTI -v
 
 ### Localisation
 ```
-Fichier : app.py
-Fonction : download_file()
+Fichier : vulnpyapp/app.py
+Fonction : download()
+Ligne : ~187
 Route : /download
 ```
 
@@ -802,57 +857,75 @@ Route : /download
 ```python
 # ❌ VULNÉRABLE
 @app.route('/download')
-@login_required
-def download_file():
+def download():
     filename = request.args.get('file', '')
     filepath = os.path.join('uploads', filename)
-    return send_file(filepath)
+    try:
+        return send_file(filepath, as_attachment=True)
+    except Exception as e:
+        return f"Error: {str(e)}", 404
 
 # /download?file=../../etc/passwd → fonctionne !
 # /download?file=../app.py        → code source exposé !
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/)
+
+**security.py — helper `safe_path()`**
+```python
+import os
+
+def safe_path(base_dir: str, user_path: str) -> str | None:
+    """Protection path traversal : retourne None si traversée détectée"""
+    if not user_path:
+        return None
+    # Refuser tout caractère suspect d'emblée
+    if '..' in user_path or user_path.startswith('/') or user_path.startswith('\\'):
+        return None
+
+    base_real = os.path.realpath(base_dir)
+    target = os.path.realpath(os.path.join(base_real, user_path))
+
+    # Vérifier que la cible reste dans base_dir
+    if os.path.commonpath([base_real, target]) != base_real:
+        return None
+    return target
+```
+
+**app.py — route /download**
 ```python
 # ✅ CORRIGÉ
 import os
+from flask import send_from_directory, abort
 from werkzeug.utils import secure_filename
-
-UPLOAD_FOLDER = os.path.realpath('uploads')
-ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.txt', '.csv'}
+from security import safe_path
 
 @app.route('/download')
 @login_required
-def download_file():
-    filename = request.args.get('file', '').strip()
+def download():
+    filename = request.args.get('file', '')
 
-    # ✅ Étape 1 : Rejeter les entrées vides
-    if not filename:
-        abort(400)
-
-    # ✅ Étape 2 : secure_filename() supprime ../ et caractères dangereux
+    # ✅ Étape 1 : secure_filename() supprime ../ et caractères dangereux
     safe_name = secure_filename(filename)
     if not safe_name:
         abort(400)
 
-    # ✅ Étape 3 : Vérification de l'extension (liste blanche)
-    ext = os.path.splitext(safe_name)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    # ✅ Étape 2 : Vérification de l'extension (liste blanche depuis config)
+    if not any(safe_name.lower().endswith(f'.{ext}')
+               for ext in app.config['ALLOWED_EXTENSIONS']):
         abort(400)
 
-    # ✅ Étape 4 : Résolution du chemin absolu réel
-    filepath = os.path.realpath(os.path.join(UPLOAD_FOLDER, safe_name))
-
-    # ✅ Étape 5 : Vérification que le fichier reste dans UPLOAD_FOLDER
-    # Bloque toute tentative d'échappement via symlinks ou encodages
-    if not filepath.startswith(UPLOAD_FOLDER + os.sep):
+    # ✅ Étape 3 : Vérification que le chemin reste dans uploads/
+    target = safe_path(app.config['UPLOAD_FOLDER'], safe_name)
+    if not target or not os.path.isfile(target):
         abort(404)  # 404 plutôt que 403 : ne pas confirmer l'existence
 
-    # ✅ Étape 6 : Vérifier que le fichier existe
-    if not os.path.isfile(filepath):
-        abort(404)
-
-    return send_file(filepath)
+    # ✅ Étape 4 : send_from_directory protège contre le traversal
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'],
+        safe_name,
+        as_attachment=True
+    )
 ```
 
 ### Visualisation de la protection
@@ -881,92 +954,109 @@ pytest tests/test_security.py::TestPathTraversal -v
 
 ### Localisation
 ```
-Fichier : app.py
+Fichier : vulnpyapp/app.py
 Fonction : ping()
-Route : /ping (POST)
+Ligne : ~201
+Route : /ping (GET, POST)
 ```
 
 ### Code vulnérable
 ```python
 # ❌ VULNÉRABLE - shell=True avec entrée utilisateur
-import os
+import subprocess
 
-@app.route('/ping', methods=['POST'])
-@login_required
+@app.route('/ping', methods=['GET', 'POST'])
 def ping():
-    host = request.form.get('host', '')
-    result = os.popen(f'ping -c 1 {host}').read()
+    result = None
+    if request.method == 'POST':
+        host = request.form.get('host', '')
+        try:
+            result = subprocess.check_output(
+                f"ping -c 1 {host}",
+                shell=True,
+                stderr=subprocess.STDOUT,
+                timeout=5
+            ).decode()
+        except Exception as e:
+            result = f"Error: {str(e)}"
     return render_template('ping.html', result=result)
 
 # Payload : localhost; cat /etc/passwd
 # Commande exécutée : ping -c 1 localhost; cat /etc/passwd
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/)
+
+**security.py — helper `is_safe_host()`**
 ```python
-# ✅ CORRIGÉ
-import subprocess
 import re
 import ipaddress
 
-# Regex liste blanche : uniquement noms de domaine valides
-HOSTNAME_REGEX = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]{0,251}[a-zA-Z0-9]$')
-
-# Plages IP privées/réservées interdites (anti-SSRF)
-BLOCKED_NETWORKS = [
-    ipaddress.ip_network('10.0.0.0/8'),
-    ipaddress.ip_network('172.16.0.0/12'),
-    ipaddress.ip_network('192.168.0.0/16'),
-    ipaddress.ip_network('127.0.0.0/8'),
-    ipaddress.ip_network('169.254.0.0/16'),
-    ipaddress.ip_network('::1/128'),
-]
+HOSTNAME_RE = re.compile(
+    r'^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
+    r'(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'
+)
 
 def is_safe_host(host: str) -> bool:
-    """Valide que le host est sûr à pinger"""
-    # Vérification format
-    if not HOSTNAME_REGEX.match(host):
+    """Valide qu'il s'agit d'un hostname ou d'une IP publique (anti-SSRF)"""
+    if not host or len(host) > 253:
         return False
-
-    # Vérification si IP : pas de plage privée
+    # Tenter IP
     try:
         ip = ipaddress.ip_address(host)
-        for network in BLOCKED_NETWORKS:
-            if ip in network:
-                return False
+        # Refuser IPs privées / loopback / link-local / multicast
+        return not (ip.is_private or ip.is_loopback
+                    or ip.is_link_local or ip.is_multicast)
     except ValueError:
-        pass  # C'est un nom de domaine, pas une IP → ok
+        pass
+    # Sinon hostname
+    return bool(HOSTNAME_RE.match(host))
+```
 
-    return True
+**app.py — route /ping**
+```python
+# ✅ CORRIGÉ
+import subprocess
+from schemas import PingSchema
+from security import is_safe_host
 
-
-@app.route('/ping', methods=['POST'])
+@app.route('/ping', methods=['GET', 'POST'])
 @login_required
+@limiter.limit("10 per minute", methods=['POST'])
 def ping():
-    host = request.form.get('host', '').strip()
+    if request.method == 'POST':
+        try:
+            data = PingSchema().load(request.form.to_dict())
+        except ValidationError:
+            return render_template('ping.html', error='Invalid host'), 400
 
-    if not is_safe_host(host):
-        abort(400)
+        host = data['host']
 
-    try:
-        # ✅ Liste de commandes, pas une chaîne → shell=False (défaut)
-        # subprocess ne passe PAS par /bin/sh
-        # L'injection de commandes via ; | & est impossible
-        result = subprocess.run(
-            ['ping', '-c', '1', '-W', '2', host],  # ← liste, pas f-string
-            capture_output=True,
-            text=True,
-            timeout=5,
-            shell=False  # ✅ Valeur par défaut, explicite pour clarté
-        )
-        output = result.stdout or result.stderr
+        # ✅ Double validation : schéma + anti-SSRF
+        if not is_safe_host(host):
+            return render_template('ping.html', error='Host not allowed'), 400
 
-    except subprocess.TimeoutExpired:
-        output = "Timeout: host did not respond"
-    except Exception:
-        output = "Error: ping failed"
+        try:
+            # ✅ Liste de commandes, pas une chaîne → shell=False
+            # subprocess ne passe PAS par /bin/sh
+            # L'injection de commandes via ; | & est impossible
+            result = subprocess.run(
+                ['ping', '-c', '1', '-W', '2', host],  # ← liste, pas f-string
+                capture_output=True,
+                text=True,
+                timeout=5,
+                shell=False,  # ✅ Valeur par défaut, explicite pour clarté
+                check=False
+            )
+            output = result.stdout + result.stderr
+        except subprocess.TimeoutExpired:
+            output = "Timeout"
+        except Exception:
+            output = "Error executing ping"
 
-    return render_template('ping.html', result=output, host=host)
+        return render_template('ping.html', result=output, host=host)
+
+    return render_template('ping.html')
 ```
 
 ### Pourquoi `shell=False` protège
@@ -989,8 +1079,8 @@ pytest tests/test_security.py::TestCommandInjection -v
 
 ### Localisation
 ```
-Fichier : models.py
-Méthode : set_password(), check_password()
+Fichier : vulnpyapp/models.py
+Méthode : set_password(), check_password() (lignes ~23-28)
 ```
 
 ### Code vulnérable
@@ -998,38 +1088,51 @@ Méthode : set_password(), check_password()
 # ❌ VULNÉRABLE
 import hashlib
 
-class User(db.Model):
+class User(UserMixin, db.Model):
+    password_hash = db.Column(db.String(32), nullable=False)  # MD5 = 32 hex
+
     def set_password(self, password):
-        # MD5 : cassable en secondes avec des tables arc-en-ciel
+        # MD5 sans sel : cassable en secondes avec des tables arc-en-ciel
         self.password_hash = hashlib.md5(password.encode()).hexdigest()
 
     def check_password(self, password):
         return self.password_hash == hashlib.md5(password.encode()).hexdigest()
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/models.py)
 ```python
-# ✅ CORRIGÉ
-from flask_bcrypt import Bcrypt
+# ✅ CORRIGÉ - bcrypt natif (pas Flask-Bcrypt)
+import bcrypt
+from flask_login import UserMixin
+from extensions import db
 
-bcrypt = Bcrypt()
-
-class User(db.Model):
-    password_hash = db.Column(db.String(128), nullable=False)
+class User(UserMixin, db.Model):
+    # ✅ bcrypt produit ~60 caractères
+    password_hash = db.Column(db.String(60), nullable=False)
 
     def set_password(self, password: str) -> None:
-        """Hash le mot de passe avec bcrypt (cost factor 12)"""
+        """Hashage bcrypt avec cost factor 12"""
+        if not password or len(password) < 8:
+            raise ValueError("Password must be at least 8 characters")
         # ✅ bcrypt intègre un sel aléatoire automatiquement
         # ✅ cost factor 12 = ~250ms de calcul → résistant au brute-force
-        self.password_hash = bcrypt.generate_password_hash(
-            password,
-            rounds=12  # Cost factor : doublement du temps tous les +1
+        salt = bcrypt.gensalt(rounds=12)
+        self.password_hash = bcrypt.hashpw(
+            password.encode('utf-8'), salt
         ).decode('utf-8')
 
     def check_password(self, password: str) -> bool:
-        """Vérifie le mot de passe en temps constant"""
-        # ✅ Comparaison en temps constant → pas de timing attack
-        return bcrypt.check_password_hash(self.password_hash, password)
+        """Vérification constante en temps (bcrypt natif)"""
+        if not password or not self.password_hash:
+            return False
+        try:
+            # ✅ Comparaison en temps constant → pas de timing attack
+            return bcrypt.checkpw(
+                password.encode('utf-8'),
+                self.password_hash.encode('utf-8')
+            )
+        except (ValueError, TypeError):
+            return False
 ```
 
 ### Comparaison des algorithmes
@@ -1057,44 +1160,64 @@ pytest tests/test_security.py::TestPasswordHashing -v
 
 ### Localisation
 ```
-Fichier : config.py
-Fichier : app.py → création de l'application
+Fichier : vulnpyapp/config.py
+Fichier : vulnpyapp/app.py → création de l'application
 ```
 
 ### Code vulnérable
 ```python
-# ❌ VULNÉRABLE - Configuration par défaut non sécurisée
+# ❌ VULNÉRABLE - vulnpyapp/config.py
 class Config:
-    SECRET_KEY = 'dev'  # Clé prévisible
-    # SESSION_COOKIE_SECURE absent → False par défaut
-    # SESSION_COOKIE_HTTPONLY absent → False par défaut
-    # SESSION_COOKIE_SAMESITE absent → None par défaut
+    # 🚨 Clé secrète faible et hardcodée
+    SECRET_KEY = os.getenv('SECRET_KEY', 'insecure-dev-key')
+
+    # 🚨 Cookies sans flags de sécurité
+    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_HTTPONLY = False
+    SESSION_COOKIE_SAMESITE = None
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/config.py)
 ```python
-# ✅ config.py
 import os
 import secrets
 
 class Config:
-    # ✅ Clé secrète forte générée aléatoirement
+    """Configuration de base sécurisée"""
+
+    # ✅ Clé secrète forte générée aléatoirement si non fournie
     SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 
-    # ✅ Cookie uniquement via HTTPS (mettre False en dev local)
-    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') != 'development'
-
+    # ✅ Cookie uniquement via HTTPS
+    SESSION_COOKIE_SECURE = True
     # ✅ Cookie inaccessible depuis JavaScript → bloque vol via XSS
     SESSION_COOKIE_HTTPONLY = True
-
     # ✅ Cookie non envoyé dans les requêtes cross-origin → bloque CSRF
     SESSION_COOKIE_SAMESITE = 'Strict'
-
     # ✅ Durée de vie de session (30 minutes d'inactivité)
     PERMANENT_SESSION_LIFETIME = 1800
+    # ✅ Préfixe __Host- : impose Secure + Path=/ + pas de Domain
+    SESSION_COOKIE_NAME = '__Host-session'
 
-    # ✅ Nom du cookie non informatif
-    SESSION_COOKIE_NAME = 'sid'
+    # ✅ CSRF
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = 3600
+
+
+class ProductionConfig(Config):
+    DEBUG = False
+
+    def __init__(self):
+        # ✅ SECRET_KEY obligatoire en prod
+        if not os.environ.get('SECRET_KEY'):
+            raise RuntimeError("SECRET_KEY must be set in production")
+
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+    # ✅ En dev local sans HTTPS, on relâche Secure (à documenter)
+    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_NAME = 'session'  # __Host- exige Secure
 ```
 
 ### Impact des flags
@@ -1112,88 +1235,100 @@ SameSite    | CSRF (requêtes cross-site)
 
 ### Localisation
 ```
-Fichier : app.py
-Route : /login (POST)
+Fichier : vulnpyapp/app.py
+Route : /login (POST), ligne ~38
 ```
 
 ### Code vulnérable
 ```python
 # ❌ VULNÉRABLE - Aucune limitation de tentatives
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    email = request.form['email']
-    password = request.form['password']
-    # Peut être appelé des milliers de fois par seconde → brute-force possible
-    user = User.query.filter_by(email=email).first()
-    if user and user.check_password(password):
-        login_user(user)
-        return redirect(url_for('index'))
-    flash('Invalid credentials')
-    return render_template('login.html')
+    if request.method == 'POST':
+        email = request.form.get('email', '')
+        password = request.form.get('password', '')
+        # Peut être appelé des milliers de fois par seconde → brute-force possible
+        ...
 ```
 
-### ✅ Solution complète
+### ✅ Solution complète (vulnpyapp_remediated/)
+
+**extensions.py — initialisation du limiter**
 ```python
-# ✅ extensions.py
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
+limiter = Limiter(key_func=get_remote_address)
 ```
 
+**config.py — quotas par défaut**
 ```python
-# ✅ app.py - Double stratégie : rate limiting + lockout
+class Config:
+    RATELIMIT_DEFAULT = "200 per hour"
+    RATELIMIT_STORAGE_URI = "memory://"
+```
+
+**models.py — colonnes de lockout**
+```python
+class User(UserMixin, db.Model):
+    failed_login_attempts = db.Column(db.Integer, default=0)
+    locked_until = db.Column(db.DateTime, nullable=True)
+
+    def is_locked(self) -> bool:
+        if self.locked_until is None:
+            return False
+        return datetime.utcnow() < self.locked_until
+```
+
+**app.py — double stratégie : rate limiting IP + lockout compte**
+```python
 from extensions import limiter
 from datetime import datetime, timedelta
 
-@app.route('/login', methods=['POST'])
-@limiter.limit("5 per minute")  # ✅ Max 5 tentatives/minute par IP
+@app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=['POST'])  # ✅ Max 5 tentatives/min/IP
 def login():
-    email = request.form.get('email', '').strip().lower()
-    password = request.form.get('password', '')
+    if request.method == 'POST':
+        try:
+            data = LoginSchema().load(request.form.to_dict())
+        except ValidationError:
+            return render_template('login.html', error='Invalid input'), 400
 
-    user = User.query.filter_by(email=email).first()
+        user = User.query.filter_by(email=data['email']).first()
 
-    # ✅ Vérification du lockout compte (indépendant du rate limiting IP)
-    if user and user.locked_until and user.locked_until > datetime.utcnow():
-        remaining = (user.locked_until - datetime.utcnow()).seconds // 60
-        flash(f'Account locked. Try again in {remaining} minutes.', 'error')
-        return render_template('login.html'), 429
+        # ✅ Vérification du lockout compte (indépendant du rate limiting IP)
+        if user and user.is_locked():
+            app.logger.warning(f"Login attempt on locked account: {data['email']}")
+            return render_template(
+                'login.html',
+                error='Account temporarily locked. Try again later.'
+            ), 429
 
-    if user and user.check_password(password):
-        # ✅ Réinitialiser le compteur d'échecs
-        user.failed_attempts = 0
-        user.locked_until = None
-        db.session.commit()
+        if user and user.check_password(data['password']):
+            # ✅ Réinitialiser le compteur d'échecs
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            db.session.commit()
+            login_user(user, remember=False)
+            return redirect(url_for('profile'))
 
-        login_user(user)
-        return redirect(url_for('index'))
-
-    else:
         # ✅ Incrémenter le compteur d'échecs
         if user:
-            user.failed_attempts = (user.failed_attempts or 0) + 1
-            if user.failed_attempts >= 5:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= 5:
                 user.locked_until = datetime.utcnow() + timedelta(minutes=15)
-                db.session.commit()
+                app.logger.warning(f"Account locked: user_id={user.id}")
+            db.session.commit()
 
         # ✅ Message générique : ne pas confirmer si l'email existe
-        flash('Invalid email or password.', 'error')
+        return render_template('login.html', error='Invalid credentials'), 401
 
-        # ✅ Délai constant pour éviter l'énumération par timing
-        import time
-        time.sleep(0.3)
-
-        return render_template('login.html'), 401
+    return render_template('login.html')
 
 
 # ✅ Gestionnaire d'erreur rate limiting
 @app.errorhandler(429)
-def ratelimit_handler(e):
+def rate_limited(e):
     return render_template('errors/429.html'), 429
 ```
 
