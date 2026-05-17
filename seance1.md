@@ -108,6 +108,61 @@ graph LR
 - 7.0 - 8.9 : Élevé
 - 9.0 - 10.0 : Critique
 
+### 1.1.5 Référentiel OWASP Top 10 — Applications Web
+
+L'**OWASP Top 10** (Open Worldwide Application Security Project) est la liste de référence des risques de sécurité applicative web les plus critiques. La version 2021 reste la version officielle en 2026.
+
+> Source : [OWASP Top 10 2021](https://owasp.org/Top10/2021/)
+
+**Vue d'ensemble des 10 catégories** :
+
+| Code | Catégorie | Idée clé | Couvert dans |
+|------|-----------|----------|--------------|
+| **A01:2021** | Broken Access Control | Règles « qui peut faire quoi » mal implémentées (IDOR, endpoints admin non protégés) | Séance 2 (IDOR) |
+| **A02:2021** | Cryptographic Failures | Atteintes à la confidentialité : pas de TLS, mots de passe en clair, hash faibles | Séance 2 (Auth) |
+| **A03:2021** | Injection | Données non fiables injectées dans des interpréteurs (SQL, OS, LDAP, templates) | Séance 1 (SQLi, XSS) |
+| **A04:2021** | Insecure Design | Architecture ou modèle métier mal conçus dès l'origine | Séance 2 (SDLC) |
+| **A05:2021** | Security Misconfiguration | Configurations par défaut, services inutiles exposés, CORS permissif | Séance 1 (CORS/CSP) |
+| **A06:2021** | Vulnerable and Outdated Components | Bibliothèques et frameworks non patchés (Log4j, dépendances obsolètes) | Séance 2 (Safety/SCA) |
+| **A07:2021** | Identification and Authentication Failures | Sessions prévisibles, absence de MFA, JWT mal signés | Séance 2 (Auth/MFA) |
+| **A08:2021** | Software and Data Integrity Failures | Absence de vérification d'intégrité (mises à jour non signées, CI/CD non sécurisée) | Séance 2 (CSRF, SDLC) |
+| **A09:2021** | Security Logging and Monitoring Failures | Logs absents ou trop pauvres, aucune alerte sur comportements anormaux | Séance 2 (Monitoring) |
+| **A10:2021** | Server-Side Request Forgery (SSRF) | Le serveur exécute des requêtes vers une URL fournie par l'utilisateur | Séance 2 (Checklist) |
+
+**Catégories prioritaires pour cette séance** :
+
+**A01:2021 – Broken Access Control**
+- IDOR / BOLA : `/users/123` accessible par n'importe quel utilisateur
+- Endpoints « admin » non protégés ou cachés seulement par l'UI
+- Contrôles d'accès réalisés uniquement côté client (JS) et non vérifiés côté serveur
+- **Mesures** : politique d'autorisation claire (RBAC/ABAC), vérification systématique côté serveur, tests d'accès horizontal automatisés
+
+**A02:2021 – Cryptographic Failures**
+- Absence de HTTPS/TLS ou versions obsolètes
+- Mots de passe stockés en clair ou avec des hash rapides (MD5, SHA-1)
+- Clés de chiffrement dans le code source ou dans un dépôt Git public
+- Algorithmes ou modes obsolètes (RC4, ECB)
+- **Mesures** : TLS partout avec HSTS, hash bcrypt/Argon2/PBKDF2, gestion centralisée des secrets (Vault, KMS)
+
+**A03:2021 – Injection**
+- SQL injection : `SELECT * FROM users WHERE name = ' " + userInput + " '`
+- Command injection : `os.system("ping " + user_input)`
+- NoSQL, LDAP, template injection (SSTI)
+- **Mesures** : requêtes paramétrées, ORM, validation stricte des entrées (listes blanches), moindre privilège sur les comptes DB/OS
+
+**A05:2021 – Security Misconfiguration**
+- Panneaux d'admin publics, comptes par défaut non changés
+- Messages d'erreur détaillés exposés en production
+- Services inutiles exposés, CORS trop permissif
+- **Mesures** : hardening systématique, « secure by default », Infrastructure as Code, revue de configuration régulière
+
+**A10:2021 – Server-Side Request Forgery (SSRF)**
+- Service de « prévisualisation » d'URL appelant `http://localhost:8080/admin`
+- Exploitation des metadata cloud (`http://169.254.169.254/`)
+- **Mesures** : listes blanches strictes d'URLs/domaines, interdiction des IPs internes/localhost, segmentation réseau
+
+> Les catégories A04, A06, A07, A08, A09 sont traitées en détail en séance 2.
+
 ---
 
 ## Module 1.2 - RGPD pour développeurs (20 min)

@@ -1434,6 +1434,135 @@ repos:
 
 ---
 
+## Module 2.8 - Référentiel OWASP API Security Top 10 (15 min)
+
+> Source : [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
+> Version de référence : **API Security Top 10 2019**, toujours largement utilisée dans la documentation et les formations.
+
+Les API exposent des fonctionnalités et des données de manière structurée mais très directe. Beaucoup de protections implicites des applications web traditionnelles (session, templating, UI) disparaissent, ce qui justifie une liste de risques spécifique.
+
+### 2.8.1 Vue d'ensemble
+
+| Code | Catégorie | Lien avec cette séance |
+|------|-----------|------------------------|
+| **API1:2019** | Broken Object Level Authorization (BOLA / IDOR) | Module 2.2 (IDOR) |
+| **API2:2019** | Broken User Authentication | Module 2.4 (Auth, JWT, MFA) |
+| **API3:2019** | Excessive Data Exposure | Module 2.3 (DTO, serializers) |
+| **API4:2019** | Lack of Resources & Rate Limiting | Module 2.6 (Rate limiting) |
+| **API5:2019** | Broken Function Level Authorization | Module 2.2 (RBAC/ABAC) |
+| **API6:2019** | Mass Assignment | Module 2.3 (Mass Assignment) |
+| **API7:2019** | Security Misconfiguration | Module 2.5 (Headers, CORS) |
+| **API8:2019** | Injection | Séance 1 (rappel API-centric) |
+| **API9:2019** | Improper Assets Management | Module 2.7 (SDLC, versionning) |
+| **API10:2019** | Insufficient Logging & Monitoring | Module 2.5 / Checklist |
+
+### 2.8.2 Détail des risques majeurs
+
+**API1:2019 – Broken Object Level Authorization (BOLA)**
+
+La vulnérabilité la plus fréquente en API : un utilisateur authentifié accède ou modifie des ressources qui ne lui appartiennent pas via des identifiants manipulables.
+
+```python
+# 🚨 VULNÉRABLE
+@app.route('/api/orders/<int:order_id>')
+def get_order(order_id):
+    return jsonify(Order.query.get(order_id).to_dict())  # Aucune vérif de propriétaire
+
+# ✅ SÉCURISÉ
+@app.route('/api/orders/<int:order_id>')
+@login_required
+def get_order(order_id):
+    order = Order.query.get_or_404(order_id)
+    if order.user_id != current_user.id and not current_user.is_admin:
+        abort(403)
+    return jsonify(order.to_dict())
+```
+
+**Mesures** : vérifier systématiquement, pour chaque requête, que l'objet appartient à l'appelant ou est autorisé par son rôle. Tests automatisés BOLA (essayer d'accéder aux ressources d'autres utilisateurs).
+
+**API3:2019 – Excessive Data Exposure**
+
+L'API renvoie trop de données, en comptant sur le front-end pour masquer ce qui ne doit pas être affiché.
+
+```python
+# 🚨 VULNÉRABLE - to_dict() expose tout, y compris password_hash et is_admin
+return jsonify(user.to_dict())
+
+# ✅ SÉCURISÉ - DTO explicite
+def user_public_dto(user):
+    return {
+        'id': user.public_id,
+        'username': user.username,
+        'avatar_url': user.avatar_url
+    }
+return jsonify(user_public_dto(user))
+```
+
+**Mesures** : filtrer côté serveur, DTO (Data Transfer Objects) ou serializers explicitant les champs exposés, revue systématique des réponses.
+
+**API4:2019 – Lack of Resources & Rate Limiting**
+
+L'API ne contrôle pas le volume de requêtes ni la taille des ressources, permettant DoS, extraction massive, brute force.
+
+**Mesures** :
+- Rate limiting (par IP, token, utilisateur), quotas — voir Module 2.6
+- Pagination obligatoire pour les listes
+- Limites de taille pour les payloads et les fichiers uploadés
+- Timeouts serveur raisonnables
+
+**API6:2019 – Mass Assignment**
+
+L'API mappe directement le JSON reçu sur un modèle interne sans restreindre les champs modifiables — voir Module 2.3.
+
+```python
+# 🚨 VULNÉRABLE - PATCH /api/users/me avec {"is_admin": true}
+for key, value in request.json.items():
+    setattr(user, key, value)
+
+# ✅ SÉCURISÉ - whitelist explicite
+ALLOWED = {'username', 'bio', 'avatar_url'}
+for key, value in request.json.items():
+    if key in ALLOWED:
+        setattr(user, key, value)
+```
+
+**API7:2019 – Security Misconfiguration (spécificités API)**
+- CORS permissif (`Access-Control-Allow-Origin: *` avec `Allow-Credentials: true`)
+- Interface Swagger ouverte avec toutes les opérations de prod, sans auth
+- Messages d'erreur internes détaillés renvoyés au client
+- **Mesures** : CORS strict, protection des interfaces de documentation, désactivation de debug en production
+
+**API9:2019 – Improper Assets Management**
+
+Mauvaise gestion du cycle de vie des versions : endpoints oubliés, non documentés ou dépréciés restent accessibles.
+
+- Ancienne version `/v1` toujours exposée et non maintenue, avec failles connues
+- Endpoints internes ou de test laissés déployés en prod
+- **Mesures** : catalogue complet des APIs (documentation, versions, propriétaires), stratégie de versionning, scans pour découvrir les *shadow APIs*
+
+**API10:2019 – Insufficient Logging & Monitoring**
+
+Focalisé sur les API : appels massifs, patterns d'abus, anomalies de tokens.
+- Journalisation contextualisée : identifiant API client, user_id, IP, endpoint, statut
+- Centralisation, dashboards API, alertes sur patterns anormaux
+- Corrélation avec les logs d'authentification, WAF, reverse proxy
+
+### 2.8.3 Correspondance Web ↔ API
+
+| OWASP Web Top 10 (2021) | OWASP API Top 10 (2019) | Spécificité API |
+|-------------------------|--------------------------|------------------|
+| A01 - Broken Access Control | API1 BOLA + API5 Function Level | IDs manipulables, endpoints granulaires |
+| A02 - Cryptographic Failures | API2 Broken Authentication | JWT, tokens, OAuth |
+| A03 - Injection | API8 Injection | Filtres et tris depuis paramètres JSON |
+| A04 - Insecure Design | API6 Mass Assignment | Binding direct JSON ↔ modèle |
+| A05 - Security Misconfig | API7 Security Misconfig | CORS, Swagger exposé |
+| A09 - Logging Failures | API10 Insufficient Logging | Patterns d'abus de tokens |
+| — | API3 Excessive Data Exposure | Réponses JSON trop riches |
+| — | API4 Lack of Rate Limiting | DoS via endpoints peu coûteux |
+| — | API9 Improper Assets Mgmt | Shadow APIs, versions dépréciées |
+
+---
+
 # 📝 EXERCICES SÉANCE 2
 
 ## Exercice 2.A — Revue de Code Sécurité (Travail individuel en séance)
