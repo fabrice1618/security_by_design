@@ -10,7 +10,12 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
 
 **Confidentialité (Confidentiality)**
 - Garantir que l'information n'est accessible qu'aux personnes autorisées
-- Mécanismes : chiffrement (TLS pour le transit, AES au repos), contrôle d'accès (RBAC, moindre privilège), authentification forte (MFA)
+- Mécanismes :
+  - Contrôle d'accès : RBAC, moindre privilège, SoD (Séparation des responsabilités)
+  - Authentification forte : MFA (TOTP, WebAuthn/FIDO2), sessions sécurisées (cookies `HttpOnly`, `Secure`, `SameSite`)
+  - Chiffrement en transit : TLS/HTTPS ; au repos : AES, TDE (Transparent Data Encryption)
+  - Gestion des clés : rotation régulière, HSM/KMS, stockage hors code source
+  - Protection des endpoints : EDR (Endpoint Detection & Response), DLP (Data Loss Prevention)
 - Exemple de violation : fuite de base de données utilisateurs
 
 **Intégrité (Integrity)**
@@ -20,7 +25,10 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
 
 **Disponibilité (Availability)**
 - Garantir l'accès aux services pour les utilisateurs légitimes
-- Mécanismes : redondance (N+1), load balancing, protection DDoS (WAF, rate limiting), PRA/PCA (backups chiffrés, restauration testée)
+- Mécanismes :
+  - Architecture résiliente : redondance (N+1), load balancing, répartition multi-régions
+  - Protection DDoS : WAF, rate limiting, dégradation progressive (graceful degradation, feature flags)
+  - PRA/PCA : backups chiffrés, restauration testée, RPO (Recovery Point Objective) et RTO (Recovery Time Objective) définis
 - Exemple de violation : attaque par déni de service
 
 Les trois piliers sont interdépendants : un système qui garantit la confidentialité mais perd la disponibilité n'est pas sécurisé. Les mesures de sécurité doivent couvrir les trois axes simultanément.
@@ -187,6 +195,19 @@ graph TD
     style CNIL fill:#ffcc00,stroke:#cc9900
     style Users fill:#ff8888,stroke:#cc0000
 ```
+
+### 1.2.4 Tableau données personnelles → risques → mesures techniques
+
+| Type de données | Risques principaux | Mesures techniques |
+|---|---|---|
+| Mots de passe | Vol, bruteforce, dump de BDD | Hash Argon2/bcrypt + sel unique, politique de complexité, vérification HaveIBeenPwned |
+| Email / Nom | Fuite, phishing, profilage | Chiffrement au repos, pseudonymisation dans les logs, minimisation |
+| Données financières (CB, IBAN) | Fraude, non-conformité PCI-DSS | Tokenisation, chiffrement colonne, accès restreint, audit trail |
+| Tokens de session | Hijacking, CSRF | Cookies `HttpOnly` + `Secure` + `SameSite=Strict`, durée limitée, régénération à la connexion |
+| Logs applicatifs | Fuite de PII dans les logs | Filtrage des données sensibles, rétention définie, logs structurés |
+| Fichiers uploadés | Path traversal, exécution de code | Vérification MIME, renommage aléatoire, stockage hors webroot, scan antivirus |
+| Clés et secrets | Compromission totale du système | Variables d'environnement, HSM/KMS, rotation régulière, jamais en dépôt Git |
+| Données sensibles (santé, biométrie) | RGPD Art. 9, amendes maximales | Chiffrement des colonnes, ABAC strict, journalisation exhaustive |
 
 ---
 
@@ -926,6 +947,16 @@ def set_security_headers(response):
     return response
 ```
 
+**Stratégie de déploiement progressif de CSP** :
+
+1. Commencer par `Content-Security-Policy-Report-Only` pour observer les violations sans bloquer le trafic :
+   ```http
+   Content-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-violations
+   ```
+2. Analyser les rapports de violation pour identifier les sources légitimes à autoriser.
+3. Passer en `Content-Security-Policy` une fois toutes les violations corrigées.
+4. Utiliser des **nonces** générés par requête pour les scripts inline indispensables plutôt que `'unsafe-inline'`.
+
 ### 1.6.4 Tableau comparatif
 
 | Mécanisme | Rôle | Configuration |
@@ -957,7 +988,7 @@ sequenceDiagram
 # 📝 EXERCICES SÉANCE 1
 
 ## Exercice 1.A - Cartographie et analyse RGPD (Rendu en fin de séance)
-**Durée : 45 min - Pondération : 20%**
+**Durée : 45 min - Pondération : — (lab guidé en séance)**
 
 ### Contexte
 Vous venez de rejoindre l'équipe de développement d'une plateforme e-commerce. Vous devez réaliser un audit initial de l'application VulnPyApp.
@@ -1046,157 +1077,321 @@ Rédiger un document `analyse_rgpd.md` contenant :
 
 ---
 
-## Exercice 1.B - CTF Injections SQL et XSS (Rendu à S+1)
-**Durée : à rendre dans la semaine - Pondération : 50%**
+## Exercice 1.B - CTF Injections SQL & XSS (Travail en binôme)
 
-### Contexte
-Mise en situation : vous êtes engagé(e) comme pentester pour auditer VulnPyApp. Vous devez démontrer 6 vulnérabilités et fournir les correctifs.
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Durée : 2h en séance + 1 semaine pour le rapport           │
+│  Rendu : archive ZIP sur la plateforme avant dimanche 23h59 │
+│  Pondération : 20% de la note finale                        │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### Challenges à réaliser
+### 🎯 Objectifs pédagogiques
 
-**Volet SQLi (3 challenges)** :
+À l'issue de cet exercice vous serez capables de :
+- Identifier et exploiter des injections SQL (classique, UNION, blind)
+- Identifier et exploiter des XSS réfléchies et stockées
+- Proposer des corrections de code adaptées
+- Rédiger un rapport technique structuré
 
-**Challenge SQLi-1 : Bypass d'authentification**
-- Se connecter en tant qu'admin sans connaître le mot de passe
-- Fournir le payload utilisé et une capture d'écran
+---
 
-**Challenge SQLi-2 : Extraction de données via UNION**
-- Écrire un script Python `exploit_sqli_union.py` qui :
-  - Détecte automatiquement le nombre de colonnes
-  - Extrait la liste complète des tables
-  - Extrait tous les emails et hashes de mots de passe
+### 🏗️ Setup
 
-**Challenge SQLi-3 : Blind SQLi time-based**
-- Écrire un script `exploit_blind_sqli.py` qui extrait, caractère par caractère, le hash MD5 du mot de passe de l'utilisateur `admin@vulnpyapp.local` depuis la table `users` via l'endpoint `/search`, sans accès direct à la BDD
-- Bonus : casser le hash MD5 obtenu avec un dictionnaire (ex. `hashcat`, `john`)
+```bash
+# 1. Cloner le dépôt (lien fourni par l'enseignant)
+git clone <URL_INSTITUTIONNELLE>/vulnpyapp.git
+cd vulnpyapp
+git checkout student-starter
 
-**Volet XSS (3 challenges)** :
+# 2. Lancer l'application
+docker-compose up --build
 
-**Challenge XSS-1 : Reflected XSS**
-- Identifier un endpoint vulnérable
-- Créer un payload qui exfiltre les cookies vers un serveur d'écoute
+# 3. Vérifier que l'app est accessible
+curl http://localhost:5000
+# → Vous devez voir la page d'accueil
 
-**Challenge XSS-2 : Stored XSS**
-- Poster un commentaire qui exécute un script chez tous les visiteurs
-- Le script doit afficher une fausse popup de connexion (phishing)
+# 4. Comptes de test disponibles
+# alice@vulnpyapp.local / Alice123!  (utilisateur normal)
+# bob@vulnpyapp.local   / Bob123!   (utilisateur normal)
+# admin@vulnpyapp.local / Admin123! (admin - à découvrir !)
+```
 
-**Challenge XSS-3 : Contournement de filtre**
-- Un endpoint a un filtre basique (blocage de `<script>`)
-- Trouver au moins 3 payloads contournant ce filtre
+---
 
-### Volet correction (obligatoire)
+### 📋 PARTIE A — Exploitation (60 pts)
 
-Pour chaque vulnérabilité, fournir :
-1. Le code original vulnérable (extrait du repo)
-2. Le code corrigé avec explications des choix
-3. Un test unitaire en pytest qui valide la correction
+#### Challenge 1 — SQL Injection Login Bypass *(10 pts)*
 
-**Exemple de structure de test attendue** :
+**Contexte :** La page `/login` est vulnérable à une injection SQL.
+
+**Objectif :** Vous connecter en tant qu'administrateur **sans connaître son mot de passe**.
+
+**Travail attendu :**
+1. Identifier le champ vulnérable
+2. Construire un payload de bypass
+3. Capturer une preuve (screenshot de la page admin accessible)
+4. Expliquer pourquoi ce payload fonctionne (logique SQL)
+
+**Indice :** Pensez aux opérateurs SQL `OR` et aux commentaires `--`
+
+```
+Rapport attendu :
+├── Payload utilisé
+├── Requête SQL générée (reconstituée)
+├── Screenshot de preuve
+└── Explication technique (5 lignes minimum)
+```
+
+---
+
+#### Challenge 2 — SQL Injection UNION (dump de données) *(15 pts)*
+
+**Contexte :** La route `/search` est vulnérable à une injection UNION.
+
+**Objectif :** Extraire la liste des utilisateurs (emails + hash de mots de passe) depuis la base de données.
+
+**Étapes guidées :**
+
+```sql
+-- Étape 1 : Déterminer le nombre de colonnes
+-- Essayez des payloads ORDER BY jusqu'à obtenir une erreur
+?q=' ORDER BY 1--
+?q=' ORDER BY 2--
+...
+
+-- Étape 2 : Identifier les colonnes affichées
+?q=' UNION SELECT NULL,NULL,...--
+
+-- Étape 3 : Extraire les données de la table 'user'
+?q=' UNION SELECT ...
+```
+
+**Travail attendu :**
+1. Script Python (`exploit_sqli_union.py`) automatisant l'extraction
+2. Fichier `dump_users.txt` avec les données extraites
+3. Analyse : les mots de passe hashés sont-ils craquables ?
+
+---
+
+#### Challenge 3 — IDOR & Information Disclosure *(20 pts)*
+
+**Contexte :** La route `/api/users/<id>` expose les données des utilisateurs sans vérifier que le demandeur est le propriétaire du compte.
+
+**Objectif :** Énumérer les utilisateurs enregistrés et identifier les comptes administrateurs via itération d'ID.
+
+**Principe :**
+```
+/api/users/1   → { "id": 1, "email": "admin@...", "is_admin": true, ... }
+/api/users/2   → { "id": 2, "email": "alice@...",  "is_admin": false, ... }
+/api/users/3   → { "id": 3, "email": "bob@...",    "is_admin": false, ... }
+
+→ En itérant les ID, vous pouvez cartographier tous les utilisateurs
+  et leurs rôles (admin ou non).
+```
+
+**Travail attendu :**
+1. Script Python (`exploit_idor_users.py`) automatisant l'extraction
+2. Fichier `users_dump.json` listant tous les utilisateurs avec leur rôle
+3. Capture d'écran prouvant l'accès non autorisé aux données d'un autre utilisateur
+4. Analyse d'impact : chaîne de compromission possible avec ces informations
+
+**Bonus :** Proposer une correction empêchant cette fuite d'information
+
+---
+
+#### Challenge 4 — XSS Réfléchie *(5 pts)*
+
+**Contexte :** La route `/search` réfléchit le paramètre `q` sans encodage.
+
+**Objectif :** Exécuter `alert(document.cookie)` dans le navigateur.
+
+**Travail attendu :**
+1. URL complète déclenchant le XSS
+2. Screenshot de l'alerte avec le cookie de session visible
+3. Scénario d'attaque réaliste (comment un attaquant exploiterait ceci)
+
+---
+
+#### Challenge 5 — XSS Stockée *(10 pts)*
+
+**Contexte :** Les commentaires sont affichés sans sanitization.
+
+**Objectif 1 :** Poster un commentaire qui vole le cookie de tout visiteur.
+
+**Objectif 2 :** Mettre en place un "keylogger" JavaScript (capture les frappes clavier).
+
+**Simulation :**
+```python
+# Simuler une victime visitant la page :
+# Ouvrir un second navigateur (ou fenêtre privée) connecté avec alice
+# → Le payload doit s'exécuter dans ce contexte
+```
+
+**Travail attendu :**
+1. Payload XSS utilisé
+2. Script `evil_server.py` (serveur recevant les données volées)
+3. Preuve de réception des cookies/frappes
+
+---
+
+### 📋 PARTIE B — Corrections (40 pts)
+
+Pour chaque vulnérabilité identifiée, fournir :
+
+#### Structure de correction attendue
 
 ```python
-# tests/test_security_fixes.py
-import pytest
-from app import create_app, db
-from app.models import User
+# fichier : corrections/routes_fixed.py
 
-@pytest.fixture
-def client():
-    app = create_app('testing')
-    with app.test_client() as client:
-        with app.app_context():
-            db.create_all()
-            yield client
-            db.drop_all()
+# ─── CORRECTION 1 : SQL Injection Login ───────────────────
+# Vulnérabilité : CWE-89
+# Ligne originale vulnérable : 45
+# Principe de correction : requêtes paramétrées via ORM
 
-class TestSQLInjectionFix:
-    def test_login_resists_sql_injection(self, client):
-        """L'authentification résiste à l'injection SQL"""
-        payloads = [
-            "admin@vulnpyapp.local' OR '1'='1",
-            "admin' --",
-            "' OR 1=1 --",
-        ]
-        for payload in payloads:
-            response = client.post('/login', data={
-                'email': payload,
-                'password': 'anything'
-            })
-            assert response.status_code in [401, 400]
-            assert 'dashboard' not in response.location if response.location else True
+# CODE VULNÉRABLE (à titre d'illustration) :
+# query = f"SELECT * FROM user WHERE email = '{email}'"
 
-    def test_search_uses_parameterized_query(self, client):
-        """La recherche utilise des requêtes paramétrées"""
-        # Tester avec un payload qui causerait une erreur SQL si non paramétré
-        response = client.get("/search?q=' UNION SELECT NULL--")
-        assert response.status_code == 200
-        assert 'sqlite' not in response.data.decode().lower()
-        assert 'error' not in response.data.decode().lower()
-
-class TestXSSFix:
-    def test_search_escapes_html(self, client):
-        """La recherche échappe correctement le HTML"""
-        payload = "<script>alert('XSS')</script>"
-        response = client.get(f'/search?q={payload}')
-        assert b'<script>' not in response.data
-        assert b'&lt;script&gt;' in response.data
-
-    def test_comment_sanitizes_input(self, client):
-        """Les commentaires sont sanitizés"""
-        client.post('/login', data={'email': 'user@test.com', 'password': 'test'})
-        client.post('/comment', data={
-            'content': '<script>alert(1)</script><b>Bold</b>'
-        })
-        response = client.get('/comments')
-        assert b'<script>' not in response.data
-        assert b'<b>Bold</b>' in response.data  # Les balises sûres sont gardées
+# ✅ CODE CORRIGÉ :
+user = User.query.filter_by(email=email).first()
+if user and user.check_password(password):
+    login_user(user)
 ```
 
-### Bonus (+20% sur la note)
+#### Grille de correction Partie B
 
-Configurer une **CSP fonctionnelle** qui :
-- Bloque les XSS démontrés ci-dessus
-- Permet quand même le bon fonctionnement de l'application
-- Utilise des nonces pour les scripts inline nécessaires
+| Correction | Critères | Points |
+|------------|----------|--------|
+| SQLi Login | ORM/params, pas de concaténation, test inclus | /8 |
+| SQLi Search | ilike paramétré, limitation résultats | /8 |
+| XSS Réfléchie | Suppression \|safe, autoescape actif | /6 |
+| XSS Stockée | Bleach avec allowlist, preuve test | /10 |
+| Bypass filtres XSS (bonus) | CSP header fonctionnel | /+5 |
 
-Fournir :
-- Le code de configuration CSP
-- Une preuve que les payloads XSS sont bloqués (capture des erreurs CSP dans la console)
+---
 
-### Livrables attendus
+### 📦 Livrables attendus
 
-Une archive `<NOM>_ctf_seance1.zip` contenant :
 ```
+<NOM1>_<NOM2>_ctf_s1.zip
 ├── exploits/
-│   ├── exploit_sqli_auth.py
-│   ├── exploit_sqli_union.py
-│   ├── exploit_blind_sqli.py
-│   ├── exploit_xss_reflected.py
-│   ├── exploit_xss_stored.py
-│   └── exploit_xss_filter_bypass.py
+│   ├── exploit_sqli_login.py      # Challenge 1
+│   ├── exploit_sqli_union.py      # Challenge 2
+│   ├── exploit_idor_users.py      # Challenge 3
+│   ├── exploit_xss_reflected.py   # Challenge 4 (ou URL + explication)
+│   └── exploit_xss_stored.py      # Challenge 5
 ├── corrections/
 │   ├── routes_fixed.py
 │   └── templates_fixed/
-├── tests/
-│   └── test_security_fixes.py
-├── csp_config.py (bonus)
-└── rapport.md (synthèse avec captures)
+│       ├── search.html
+│       └── comments.html
+├── preuves/
+│   ├── screenshot_sqli_bypass.png
+│   ├── dump_users.txt
+│   ├── screenshot_xss_reflected.png
+│   └── screenshot_xss_stored.png
+└── rapport.md
 ```
 
-### Critères d'évaluation
+### 📝 Template rapport.md
 
-| Critère | Pondération |
-|---------|-------------|
-| Exploits SQLi fonctionnels (3) | 25% |
-| Exploits XSS fonctionnels (3) | 25% |
-| Qualité des corrections | 25% |
-| Tests pytest valides et complets | 15% |
-| Qualité du rapport | 10% |
-| Bonus CSP | +20% |
+```markdown
+# Rapport CTF - Injections SQL & XSS
+**Binôme :** Prénom NOM 1 / Prénom NOM 2
+**Date :** JJ/MM/AAAA
+**Version VulnPyApp :** student-starter
+
+## Résumé exécutif
+[3-5 lignes : vulnérabilités trouvées, impact global]
+
+## Challenge 1 - SQLi Login Bypass
+### Vulnérabilité identifiée
+- Fichier : app.py, ligne X
+- Type : CWE-89
+- CVSS v3.1 Score : X.X (Vecteur : ...)
+
+### Exploitation
+**Payload :**
+```
+[votre payload]
+```
+**Requête SQL générée :**
+```sql
+[requête reconstituée]
+```
+**Preuve :** [screenshot]
+
+### Correction appliquée
+[code corrigé commenté]
+
+### Vérification
+[test prouvant que la correction fonctionne]
+
+---
+[Répéter pour chaque challenge]
+
+## Bilan
+| Challenge | Exploité | Corrigé | Points estimés |
+|-----------|----------|---------|----------------|
+| 1 SQLi Login | ✅/❌ | ✅/❌ | /10 |
+| 2 SQLi UNION | ✅/❌ | ✅/❌ | /15 |
+| 3 IDOR / Info Disclosure | ✅/❌ | ✅/❌ | /20 |
+| 4 XSS Reflect | ✅/❌ | ✅/❌ | /5 |
+| 5 XSS Stored | ✅/❌ | ✅/❌ | /10 |
+
+## Difficultés rencontrées
+[Ce qui a posé problème, comment vous avez résolu]
+
+## Sources consultées
+[Références OWASP, PortSwigger, etc.]
+```
+
+---
+
+### ⚖️ Grille d'évaluation CTF
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    GRILLE D'ÉVALUATION                       │
+│                   CTF - Injections / XSS                     │
+├─────────────────────────────┬────────┬──────────────────────┤
+│ Critère                     │ Points │ Détail               │
+├─────────────────────────────┼────────┼──────────────────────┤
+│ EXPLOITATION (60%)          │        │                      │
+│  Challenge 1 - SQLi Login   │ /10    │ Payload + explication│
+│  Challenge 2 - UNION dump   │ /15    │ Script + données     │
+│  Challenge 3 - IDOR / Info Disclosure │ /20    │ Script + analyse d'impact │
+│  Challenge 4 - XSS Reflect  │ /5     │ URL + screenshot     │
+│  Challenge 5 - XSS Stored   │ /10    │ Payload + preuve     │
+├─────────────────────────────┼────────┼──────────────────────┤
+│ CORRECTIONS (40%)           │        │                      │
+│  SQLi Login fix             │ /8     │ Code + test          │
+│  SQLi Search fix            │ /8     │ Code + test          │
+│  XSS Réfléchie fix          │ /6     │ Template corrigé     │
+│  XSS Stockée fix + Bleach   │ /10    │ Code + allowlist     │
+│  Tests pytest passants      │ /8     │ ≥80% de réussite     │
+├─────────────────────────────┼────────┼──────────────────────┤
+│ QUALITÉ RAPPORT             │ /10    │ Structure, clarté    │
+├─────────────────────────────┼────────┼──────────────────────┤
+│ BONUS                       │        │                      │
+│  CSP header fonctionnel     │ +5     │                      │
+│  Correction IDOR complète   │ +3     │                      │
+│  Bypass filtre XSS          │ +3     │                      │
+├─────────────────────────────┼────────┼──────────────────────┤
+│ TOTAL                       │ /100   │                      │
+└─────────────────────────────┴────────┴──────────────────────┘
+
+Pénalités :
+  - Rapport absent ou < 1 page : -20 pts
+  - Code copié sans compréhension démontrée : -30 pts
+  - Rendu en retard (>24h) : -10 pts/jour
+```
 
 ---
 
 ## Exercice 1.C - Quiz fondamentaux (Fin de séance)
-**Durée : 15 min - Pondération : 30%**
+**Durée : 15 min - Pondération : 10%**
 
 QCM de 20 questions sur :
 - Triade CIA et concepts fondamentaux

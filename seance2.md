@@ -216,6 +216,19 @@ def check_csrf_origin():
 
 ## Module 2.2 - Insecure Direct Object Reference / IDOR (30 min)
 
+### 2.2.0 Authentification vs Autorisation
+
+**Distinction fondamentale** :
+- **Authentification (AuthN)** : vérifier l'identité — *qui êtes-vous ?* (login, MFA, certificat…)
+- **Autorisation (AuthZ)** : vérifier les droits — *que pouvez-vous faire ?* (rôles, attributs, listes de droits…)
+
+Ces deux contrôles sont **indépendants et complémentaires** : un utilisateur peut être authentifié sans être autorisé à accéder à une ressource spécifique. La vérification d'autorisation doit toujours se faire **côté serveur**, jamais uniquement côté client.
+
+**Modèles de contrôle d'accès** :
+- **RBAC** (Role-Based Access Control) : droits assignés par rôles prédéfinis (admin, user, manager)
+- **ABAC** (Attribute-Based Access Control) : décisions basées sur des attributs contextuels (service, pays, statut du compte, heure)
+- **ACL** (Access Control List) : listes explicites de droits par ressource (ex. partage de fichiers, règles de pare-feu)
+
 ### 2.2.1 Principe
 
 IDOR se produit quand l'application expose une référence directe à un objet (ID en URL, paramètre) sans vérifier que l'utilisateur a le droit d'y accéder.
@@ -792,6 +805,11 @@ def is_password_pwned(password: str) -> bool:
     return False
 ```
 
+**Recommandations NIST SP 800-63B sur la politique de mots de passe** :
+- Privilégier les **passphrases** longues et mémorisables plutôt que des règles de complexité arbitraires (combinaison imposée majuscule + chiffre + symbole).
+- **Ne pas imposer de rotation périodique forcée** : les changements fréquents favorisent les mots de passe faibles et prévisibles. Ne forcer le renouvellement qu'en cas de suspicion de compromission.
+- Bloquer les mots de passe présents dans des listes de fuites connues (HaveIBeenPwned, rockyou.txt).
+
 ### 2.4.3 Réinitialisation de mot de passe sécurisée
 
 ```python
@@ -1155,6 +1173,7 @@ def ratelimit_handler(e):
 - **Fixed Window** : compteur remis à zéro à intervalle fixe (ex. toutes les minutes) - simple mais peut laisser passer des pics en fin de fenêtre
 - **Sliding Window** : fenêtre glissante plus précise (ex. dernière minute glissante à tout instant) - recommandé pour les endpoints sensibles
 - **Token Bucket** : nombre fixe de tokens consommés par requête, régénérés périodiquement - lisse le trafic
+- **Leaky Bucket** : file d'attente de taille fixe traitée à débit constant ; l'excès est immédiatement rejeté - garantit un débit stable mais peut éliminer des pics légitimes
 
 **Déroulement du rate limiting** : chaque requête est comptée par clé (IP, user_id, endpoint). Quand le seuil est dépassé, le serveur retourne 429 avec un en-tête Retry-After.
 
@@ -1287,7 +1306,7 @@ graph LR
     D --> T[Test]
     T --> DEP[Déploiement]
     C -.-> C1[Threat modeling<br/>Architecture review]
-    D -.-> D1[Code review<br/>Linters<br/>Pre-commit hooks<br/>SCA]
+    D -.-> D1[Code review<br/>OWASP ASVS<br/>Linters<br/>Pre-commit hooks<br/>SCA]
     T -.-> T1[SAST<br/>DAST<br/>Pentest<br/>Dependency audit]
     DEP -.-> DEP1[Hardening<br/>Secrets mgmt<br/>Monitoring<br/>Incident response]
 ```
@@ -1417,255 +1436,1009 @@ repos:
 
 # 📝 EXERCICES SÉANCE 2
 
-## Exercice 2.A - Revue de code sécurité (Rendu en fin de séance)
-**Durée : 45 min - Pondération : 20%**
+## Exercice 2.A — Revue de Code Sécurité (Travail individuel en séance)
 
-### Contexte
-Vous êtes lead développeur. Un junior soumet une Pull Request avec une nouvelle feature. Vous devez réaliser la revue de sécurité.
-
-### Code à analyser
-
-Un fichier `pr_to_review.py` (~200 lignes) contenant volontairement **10 à 15 vulnérabilités** parmi :
-- IDOR
-- Mass Assignment
-- SSTI
-- CSRF non protégé
-- Authentification faible
-- Logs de données sensibles
-- Hardcoded secrets
-- Dépendance vulnérable
-- Validation insuffisante
-- Session non sécurisée
-
-### Travail demandé
-
-Produire un rapport `revue_code.md` contenant pour chaque vulnérabilité :
-
-```markdown
-## VULN-001 : [Titre]
-
-**Fichier/Ligne** : pr_to_review.py:42
-**Sévérité** : Critique / Élevée / Moyenne / Faible
-**CWE** : CWE-XXX
-**Score CVSS** : X.X
-
-### Description
-[Description de la vulnérabilité]
-
-### Preuve / Exploitation possible
-```python
-# Code/payload démontrant l'exploitation
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Durée : 45 minutes EN SÉANCE (documents autorisés)         │
+│  Rendu : PDF via formulaire en ligne avant la fin de séance │
+│  Pondération : 15% de la note finale                        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Correction proposée
-```python
-# Code corrigé
-```
+### 🎯 Consigne
 
-### Justification
-[Explication des choix techniques]
-```
+Le code suivant est un extrait d'une application Flask de gestion de commandes. Il contient **6 vulnérabilités de sécurité**.
 
-Plus un script `analyse_auto.py` qui :
-1. Lance Bandit sur le code
-2. Lance Safety sur les dépendances
-3. Compare avec votre analyse manuelle
-4. Génère un rapport consolidé
-
-### Critères d'évaluation
-- Nombre de vulnérabilités identifiées (40%)
-- Pertinence du scoring CVSS (15%)
-- Qualité des corrections (30%)
-- Script d'analyse automatisé (15%)
+**Pour chaque vulnérabilité :**
+1. Indiquer le numéro de ligne
+2. Nommer la vulnérabilité
+3. Donner le CWE correspondant
+4. Évaluer le score CVSS v3.1 (vecteur simplifié accepté)
+5. Proposer une correction (code ou description)
 
 ---
 
-## Exercice 2.B - Projet final : Audit et sécurisation complète
-**À rendre 2 semaines après la séance - Pondération : 60%**
-
-### Contexte
-Vous devez réaliser un audit complet de VulnPyApp et livrer une version sécurisée prête pour la production.
-
-### Livrables attendus
-
-**1. Rapport d'audit de sécurité (`audit_report.pdf`)**
-
-15-20 pages comprenant :
-- Résumé exécutif (non-technique, 1 page)
-- Méthodologie d'audit
-- Inventaire des vulnérabilités (minimum 10) :
-  - Au moins 2 critiques
-  - Au moins 4 élevées
-  - Classification OWASP Top 10 + CWE + CVSS
-- Pour chaque vuln : PoC reproductible (script Python), impact métier, recommandation
-- Matrice des risques résiduels après correction
-- Roadmap de remédiation priorisée
-
-**2. Code sécurisé (repository Git)**
-
-Application VulnPyApp corrigée :
-- Toutes les vulnérabilités identifiées corrigées
-- Commits atomiques et documentés (un commit par fix)
-- Suite de tests pytest validant les corrections (≥80% coverage des routes)
-- Configuration sécurisée complète (Talisman, Limiter, etc.)
-- Pre-commit hooks configurés (bandit, detect-secrets)
-- CI/CD avec gates de sécurité (GitHub Actions ou GitLab CI)
-
-Exemple de pipeline attendu :
-
-```yaml
-# .github/workflows/security.yml
-name: Security Pipeline
-on: [push, pull_request]
-
-jobs:
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install bandit safety pip-audit pytest pytest-cov
-
-      - name: SAST - Bandit
-        run: bandit -r app/ -f json -o bandit.json
-        continue-on-error: false
-
-      - name: SCA - Safety
-        run: safety check --json
-
-      - name: SCA - pip-audit
-        run: pip-audit -r requirements.txt
-
-      - name: Secret detection
-        run: detect-secrets scan
-
-      - name: Tests sécurité
-        run: pytest tests/security/ --cov=app --cov-fail-under=80
-```
-
-**3. Suite de tests de sécurité**
-
-Tests automatisés couvrant tous les types de vulnérabilités vus :
+### 📄 Code à analyser — `orders_api.py`
 
 ```python
-# tests/security/test_full_security.py
-import pytest
-from app import create_app, db
+# orders_api.py - API de gestion des commandes
+# Version : 1.0 (production)
+import os
+import hashlib
+import sqlite3
+from flask import Flask, request, jsonify, render_template_string, session
 
-class TestAuthenticationSecurity:
-    """Tests d'authentification sécurisée"""
+app = Flask(__name__)
+app.secret_key = "flask_secret_2024"                          # ligne 8
 
-    def test_password_hashing_uses_argon2(self, client):
-        """Les mots de passe sont hashés avec Argon2"""
-        pass
+db_path = "orders.db"
 
-    def test_password_policy_enforced(self, client):
-        """La politique de mot de passe est appliquée"""
-        weak_passwords = ['12345', 'password', 'aaaaaa']
-        for pwd in weak_passwords:
-            r = client.post('/register', json={
-                'email': 'test@test.com', 'password': pwd
-            })
-            assert r.status_code == 400
 
-    def test_brute_force_protection(self, client):
-        """Protection contre le brute force après N échecs"""
-        for i in range(6):
-            client.post('/login', data={
-                'email': 'admin@vulnpyapp.local', 'password': 'wrong'
-            })
-        r = client.post('/login', data={
-            'email': 'admin@vulnpyapp.local', 'password': 'Admin123!'
-        })
-        assert 'locked' in r.json.get('error', '').lower()
+def get_db():
+    return sqlite3.connect(db_path)
 
-    def test_timing_attack_resistance(self, client):
-        """Pas d'énumération via timing"""
-        import time
-        # Tester avec utilisateur existant vs inexistant
-        # Les temps doivent être similaires
-        pass
 
-class TestAuthorizationSecurity:
-    def test_idor_protection_on_orders(self, client):
-        """IDOR impossible sur les commandes"""
-        pass
+# ── Authentification ──────────────────────────────────────────
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username', '')
+    password = data.get('password', '')
 
-    def test_mass_assignment_blocked(self, client):
-        """Mass assignment bloqué (is_admin)"""
-        pass
+    # Hashage du mot de passe
+    pwd_hash = hashlib.md5(password.encode()).hexdigest()      # ligne 23
 
-class TestInjectionSecurity:
-    def test_sqli_login_protected(self, client):
-        pass
+    conn = get_db()
+    query = f"""
+        SELECT id, username, role
+        FROM users
+        WHERE username = '{username}'                          # ligne 29
+        AND password_hash = '{pwd_hash}'
+    """
+    cursor = conn.execute(query)                               # ligne 32
+    user = cursor.fetchone()
+    conn.close()
 
-    def test_xss_search_protected(self, client):
-        pass
+    if user:
+        session['user_id'] = user[0]
+        session['username'] = user[1]
+        session['role'] = user[2]
+        return jsonify({'status': 'ok', 'role': user[2]})
 
-    def test_ssti_protected(self, client):
-        pass
+    return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
 
-class TestSessionSecurity:
-    def test_session_regenerated_on_login(self, client):
-        pass
 
-    def test_cookies_have_security_flags(self, client):
-        r = client.post('/login', data={...})
-        cookie = r.headers.get('Set-Cookie', '')
-        assert 'HttpOnly' in cookie
-        assert 'Secure' in cookie
-        assert 'SameSite=Strict' in cookie
+# ── Commandes ────────────────────────────────────────────────
+@app.route('/api/orders/<int:order_id>', methods=['GET'])
+def get_order(order_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
 
-class TestSecurityHeaders:
-    def test_csp_header_present(self, client):
-        r = client.get('/')
-        assert 'Content-Security-Policy' in r.headers
+    conn = get_db()
+    # Récupération de la commande par ID
+    order = conn.execute(
+        "SELECT * FROM orders WHERE id = ?", (order_id,)
+    ).fetchone()                                               # ligne 52
+    conn.close()
 
-    def test_hsts_header_present(self, client):
-        r = client.get('/')
-        assert 'Strict-Transport-Security' in r.headers
+    if not order:
+        return jsonify({'error': 'Not found'}), 404
+
+    return jsonify({
+        'id': order[0],
+        'user_id': order[1],
+        'product': order[2],
+        'amount': order[3],
+        'address': order[4]
+    })
+
+
+@app.route('/api/orders', methods=['POST'])
+def create_order():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+
+    # Création de la commande avec toutes les données reçues
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO orders (user_id, product, amount, address, status, is_paid)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        data.get('user_id', session['user_id']),               # ligne 77
+        data.get('product'),
+        data.get('amount'),
+        data.get('address'),
+        data.get('status', 'pending'),                         # ligne 81
+        data.get('is_paid', 0)                                 # ligne 82
+    ))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'created'}), 201
+
+
+# ── Administration ───────────────────────────────────────────
+@app.route('/admin/report')
+def admin_report():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    report_name = request.args.get('report', 'default')
+
+    # Rendu du rapport
+    template = f"""
+    <html>
+    <body>
+        <h1>Rapport : {report_name}</h1>                      # ligne 98
+        <p>Généré par : {session['username']}</p>
+        <p>Total commandes : {{{{ total }}}}</p>
+    </body>
+    </html>
+    """
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+    conn.close()
+    return render_template_string(template, total=total)       # ligne 107
+
+
+# ── Export ───────────────────────────────────────────────────
+@app.route('/api/export')
+def export_data():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    filename = request.args.get('filename', 'export.csv')
+    filepath = os.path.join('/app/exports', filename)          # ligne 116
+
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:                        # ligne 118
+            content = f.read()
+        return content, 200, {'Content-Type': 'text/plain'}
+
+    return jsonify({'error': 'File not found'}), 404
+
+
+# ── Notifications ─────────────────────────────────────────────
+@app.route('/api/notify', methods=['POST'])
+def send_notification():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    email = data.get('email', '')
+
+    # Envoi de notification par email via sendmail
+    os.system(f"sendmail -t {email} < /app/templates/notification.txt")  # ligne 133
+
+    return jsonify({'status': 'sent'})
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')                       # ligne 138
 ```
 
-**4. Documentation Security by Design**
+---
 
-Document `security_design.md` (5-10 pages) :
-- Architecture de sécurité de l'application (schémas)
-- Politique de sécurité applicative
-- Procédures opérationnelles :
-  - Onboarding développeur (checklist sécu)
-  - Procédure de patch d'urgence
-  - Procédure de réponse aux incidents
-  - Procédure de revue de code sécurité
-- Modèle de threat modeling appliqué (STRIDE)
-- Métriques de sécurité à suivre (KPI)
+### 📝 Grille de réponse — Exercice 2.A
 
-**5. Soutenance orale (15 min + 10 min Q&A)**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Nom / Prénom : ________________________________  Date : __________________ │
+│  Durée restante : [  ] 45 min  [  ] 30 min  [  ] 15 min                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-Présenter :
-- Démo live d'une exploitation pré-correction
-- Démo live de la même tentative post-correction
-- Présentation du plan de sécurité
-- Justification des choix techniques
+Pour chaque vulnérabilité (1 à 6) :
 
-### Critères d'évaluation détaillés
+```
+Ligne(s)     : _______
+Nom          : ________________________________________________
+CWE          : CWE-_______
+CVSS Score   : _______ / 10   Vecteur : AV:_/AC:_/PR:_/UI:_/S:_/C:_/I:_/A:_
+Impact       : ________________________________________________
 
-| Critère | Pondération | Détail |
-|---------|-------------|--------|
-| **Exhaustivité de l'audit** | 20% | Nombre et qualité des vulnérabilités identifiées |
-| **Qualité des PoC** | 15% | Scripts Python reproductibles et documentés |
-| **Qualité des corrections** | 25% | Code sécurisé, idiomatique, bien commenté |
-| **Suite de tests** | 15% | Coverage, pertinence, automatisation |
-| **CI/CD sécurité** | 10% | Pipeline fonctionnel avec gates |
-| **Documentation** | 10% | Clarté, complétude, professionalisme |
-| **Soutenance** | 5% | Maîtrise du sujet, démonstrations |
+Correction :
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│                                                             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
-**Bonus possibles (+15% max)** :
-- Intégration d'un WAF (ModSecurity)
-- Mise en place de monitoring (logs structurés + alerting)
-- Implémentation MFA T
+---
+
+### ✅ Corrigé enseignant — Exercice 2.A
+
+```
+⚠️  NE PAS DISTRIBUER AUX ÉTUDIANTS AVANT LA FIN DE LA SÉANCE
+```
+
+| # | Ligne(s) | Vulnérabilité | CWE | CVSS | Correction |
+|---|----------|---------------|-----|------|------------|
+| 1 | 8 | Secret key statique | CWE-321 | 7.5 | `os.environ.get('SECRET_KEY')` |
+| 2 | 23 | MD5 pour hash password | CWE-327 | 8.1 | `bcrypt.generate_password_hash()` |
+| 3 | 29-32 | Injection SQL (login) | CWE-89 | 9.8 | `User.query.filter_by()` ORM |
+| 4 | 52 | IDOR (get_order) | CWE-639 | 7.5 | Filtrer par `user_id=session['user_id']` |
+| 5 | 77-82 | Mass Assignment | CWE-915 | 8.1 | Allowlist + forcer `user_id=session['user_id']` |
+| 6 | 98+107 | SSTI | CWE-1336 | 9.8 | `render_template()` avec variable séparée |
+| 7 | 116-118 | Path Traversal | CWE-22 | 8.6 | `secure_filename()` + `realpath()` check |
+| 8 | 133 | Command Injection | CWE-78 | 9.8 | `subprocess` list form, `shell=False` |
+| 9 | 138 | Debug mode en production | CWE-94 | 5.3 | `debug=False`, variable d'env |
+
+```
+Note : 6 vulnérabilités requises / 9 présentes
+→ Trouver 6+ = note maximale
+→ Les étudiants qui trouvent 8 ou 9 = bonus +5 pts
+```
+
+---
+
+## Exercice 2.B — Audit & Tests de Sécurité (Binôme, 1 semaine)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Durée : 1h30 en séance + 1 semaine pour finalisation       │
+│  Rendu : dépôt Git privé + rapport PDF                      │
+│  Pondération : 25% de la note finale                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 🎯 Objectifs
+
+- Conduire un audit de sécurité structuré avec méthodologie OWASP
+- Rédiger des tests de sécurité automatisés avec pytest
+- Utiliser des outils d'analyse statique (Bandit, Safety)
+- Produire un rapport d'audit professionnel
+
+---
+
+### 📋 PARTIE A — Audit outillé (40 pts)
+
+#### A1 — Analyse statique avec Bandit *(10 pts)*
+
+```bash
+# Installation
+pip install bandit
+
+# Analyse du projet (branche vulnérable)
+git checkout student-starter
+bandit -r . -x ./tests -f json -o bandit_report.json
+bandit -r . -x ./tests -f txt  -o bandit_report.txt
+
+# Visualisation
+cat bandit_report.txt
+```
+
+**Travail attendu :**
+
+```markdown
+## Rapport Bandit
+
+### Statistiques
+- Fichiers analysés : X
+- Issues HIGH severity : X
+- Issues MEDIUM severity : X
+- Issues LOW severity : X
+
+### Top 5 des issues critiques
+
+| Rank | Fichier | Ligne | Issue | Sévérité | CWE |
+|------|---------|-------|-------|----------|-----|
+| 1    |         |       |       |          |     |
+| 2    |         |       |       |          |     |
+...
+
+### Faux positifs identifiés
+[Issues Bandit qui ne sont PAS de vraies vulnérabilités + justification]
+
+### Faux négatifs identifiés
+[Vulnérabilités connues que Bandit N'A PAS détectées + explication]
+```
+
+---
+
+#### A2 — Analyse des dépendances avec Safety *(10 pts)*
+
+```bash
+# Installation
+pip install safety
+
+# Analyse
+safety check -r requirements.txt --json > safety_report.json
+safety check -r requirements.txt
+
+# Alternative : pip-audit
+pip install pip-audit
+pip-audit -r requirements.txt
+```
+
+**Travail attendu :**
+
+```markdown
+## Rapport Safety / pip-audit
+
+### Dépendances vulnérables identifiées
+
+| Package | Version actuelle | CVE | Sévérité | Description | Fix disponible |
+|---------|-----------------|-----|----------|-------------|----------------|
+|         |                 |     |          |             |                |
+
+### Recommandations
+[Pour chaque CVE : mettre à jour vers X.X.X ou mesure de mitigation]
+
+### requirements.txt mis à jour
+[Fournir le fichier avec versions corrigées]
+```
+
+---
+
+#### A3 — Tests manuels OWASP Top 10 *(20 pts)*
+
+Tester chaque catégorie OWASP sur l'application :
+
+```markdown
+## Checklist OWASP Top 10 2021
+
+### A01 - Broken Access Control
+- [ ] IDOR sur /api/orders/<id>
+- [ ] Élévation de privilèges via mass assignment
+- [ ] Accès direct à /admin sans authentification
+
+Test effectué : ________________________________
+Résultat : Vulnérable ✅ / Non vulnérable ❌
+Preuve : [screenshot/payload]
+
+### A02 - Cryptographic Failures
+- [ ] Algorithme de hashage des mots de passe
+- [ ] Transmission en clair (HTTP vs HTTPS)
+- [ ] Clés secrètes en dur dans le code
+
+Test effectué : ________________________________
+Résultat : Vulnérable ✅ / Non vulnérable ❌
+
+### A03 - Injection
+- [ ] SQL Injection (login, search, API)
+- [ ] Command Injection (/ping, /notify)
+- [ ] SSTI (/hello, /admin/report)
+
+Test effectué : ________________________________
+Résultat : Vulnérable ✅ / Non vulnérable ❌
+
+### A04 - Insecure Design
+- [ ] Absence de rate limiting sur /login
+- [ ] Pas de politique de mots de passe
+- [ ] Gestion d'erreurs exposant des infos
+
+### A05 - Security Misconfiguration
+- [ ] Debug mode actif
+- [ ] Headers de sécurité manquants
+- [ ] Cookies sans flags Secure/HttpOnly
+
+### A06 - Vulnerable Components
+[Résultats Safety/pip-audit]
+
+### A07 - Auth Failures
+- [ ] Brute-force possible sur /login
+- [ ] Session non invalidée à la déconnexion
+- [ ] Tokens prévisibles
+
+### A08 - Software & Data Integrity
+- [ ] Absence vérification intégrité uploads
+- [ ] CSRF sur les formulaires
+
+### A09 - Logging Failures
+- [ ] Tentatives d'authentification non loguées
+- [ ] Informations sensibles dans les logs
+- [ ] Pas d'alerting sur comportements suspects
+
+### A10 - SSRF
+- [ ] Tester si l'app fait des requêtes vers URLs fournies par l'utilisateur
+```
+
+---
+
+### 📋 PARTIE B — Tests automatisés pytest *(40 pts)*
+
+Compléter le fichier `tests/test_security_student.py` :
+
+```python
+# tests/test_security_student.py
+"""
+Tests de sécurité à compléter.
+Objectif : 100% des tests doivent ÉCHOUER sur la branche vulnérable
+           et PASSER sur la branche remediated.
+"""
+import pytest
+import re
+from app import create_app, db
+from models import User, Comment, Order
+
+
+@pytest.fixture
+def app():
+    app = create_app('testing')
+    with app.app_context():
+        db.create_all()
+        # Créer utilisateurs de test
+        alice = User(email='alice@test.com', username='alice', is_admin=False)
+        alice.set_password('Alice123!')
+        bob = User(email='bob@test.com', username='bob', is_admin=False)
+        bob.set_password('Bob123!')
+        admin = User(email='admin@test.com', username='admin', is_admin=True)
+        admin.set_password('Admin123!')
+        db.session.add_all([alice, bob, admin])
+        db.session.commit()
+        yield app
+        db.drop_all()
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+@pytest.fixture
+def alice_client(client):
+    """Client connecté en tant qu'alice"""
+    client.post('/login', data={
+        'email': 'alice@test.com',
+        'password': 'Alice123!'
+    })
+    return client
+
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 1 — SQL INJECTION (20 pts)
+# ═══════════════════════════════════════════════════════════════
+
+class TestSQLInjection:
+
+    def test_login_sqli_bypass_blocked(self, client):
+        """
+        TODO : Vérifier que le payload SQLi de bypass est bloqué.
+        Le payload ' OR '1'='1' -- ne doit pas permettre la connexion.
+        Assertion attendue : status_code == 401 ou redirection vers login
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        payload = {
+            'email': "' OR '1'='1' --",
+            'password': 'anything'
+        }
+        response = ...  # effectuer la requête POST /login
+        assert ...      # vérifier que la connexion est refusée
+        # ───────────────────────────────────────────────────────
+
+    def test_login_sqli_comment_blocked(self, client):
+        """
+        TODO : Tester le payload avec commentaire SQL '--'
+        L'email admin'-- ne doit pas permettre la connexion.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        pass
+        # ───────────────────────────────────────────────────────
+
+    def test_search_union_injection_blocked(self, alice_client):
+        """
+        TODO : Vérifier que l'injection UNION sur /search est bloquée.
+        Le payload UNION SELECT ne doit pas retourner des données
+        de la table 'user' dans les résultats de recherche.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        sqli_payload = "' UNION SELECT id,email,password_hash,4,5 FROM user--"
+        response = ...
+        data = response.get_data(as_text=True)
+        # Vérifier qu'aucun email @test.com n'apparaît dans les résultats
+        assert ...
+        # ───────────────────────────────────────────────────────
+
+    def test_search_normal_query_works(self, alice_client):
+        """
+        TODO : S'assurer que la recherche normale fonctionne toujours
+        après correction (test de non-régression).
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        pass
+        # ───────────────────────────────────────────────────────
+
+    def test_api_blind_sqli_boolean_blocked(self, alice_client, app):
+        """
+        TODO : Vérifier que l'injection booléenne est bloquée sur
+        /api/users/<id>. Les deux requêtes suivantes doivent retourner
+        le même résultat (pas de différence exploitable).
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        pass
+        # ───────────────────────────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 2 — XSS (20 pts)
+# ═══════════════════════════════════════════════════════════════
+
+class TestXSS:
+
+    def test_xss_reflected_search_escaped(self, alice_client):
+        """
+        TODO : Vérifier que le XSS réfléchi sur /search est échappé.
+        La balise <script> doit apparaître encodée dans la réponse HTML,
+        pas comme balise HTML active.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        xss_payload = '<script>alert(1)</script>'
+        response = alice_client.get(f'/search?q={xss_payload}')
+        data = response.get_data(as_text=True)
+
+        # La balise ne doit PAS être présente telle quelle
+        assert '<script>alert(1)</script>' not in data
+
+        # Elle doit être encodée (au moins l'une de ces formes)
+        assert '&lt;script&gt;' in data or 'alert' not in data
+        # ───────────────────────────────────────────────────────
+
+    def test_xss_stored_bleach_sanitized(self, alice_client, app):
+        """
+        TODO : Poster un commentaire avec payload XSS et vérifier
+        qu'il est sanitisé par Bleach avant stockage ET affichage.
+        Les attributs 'onerror', 'onload', 'onclick' doivent être supprimés.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        xss_payload = '<img src="x" onerror="alert(document.cookie)">'
+
+        # Poster le commentaire
+        post_response = ...
+
+        # Récupérer la page des commentaires
+        get_response = ...
+        data = get_response.get_data(as_text=True)
+
+        # L'attribut onerror ne doit pas être présent
+        assert 'onerror' not in data
+        assert 'alert' not in data
+        # ───────────────────────────────────────────────────────
+
+    def test_xss_allowed_tags_preserved(self, alice_client):
+        """
+        TODO : Vérifier que les tags HTML autorisés par Bleach
+        sont bien conservés (b, i, em, strong).
+        Test de non-régression : les mises en forme légitimes fonctionnent.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        pass
+        # ───────────────────────────────────────────────────────
+
+    def test_xss_script_tag_variants_blocked(self, alice_client):
+        """
+        TODO : Tester plusieurs variantes de payloads XSS.
+        Tous doivent être bloqués/échappés.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        variants = [
+            '<script>alert(1)</script>',
+            '<SCRIPT>alert(1)</SCRIPT>',
+            '<scr<script>ipt>alert(1)</scr</script>ipt>',
+            'javascript:alert(1)',
+            '<img src=x onerror=alert(1)>',
+            '<svg onload=alert(1)>',
+            '"><script>alert(1)</script>',
+        ]
+        for payload in variants:
+            response = alice_client.post('/comments', data={
+                'content': payload,
+                'csrf_token': ...  # récupérer le token
+            })
+            # Vérifier que le payload n'est pas exécutable dans la réponse
+            # ─── À COMPLÉTER ─────────────────────────────────
+            pass
+        # ───────────────────────────────────────────────────────
+
+    def test_csp_header_present(self, client):
+        """
+        TODO : Vérifier que le header Content-Security-Policy
+        est présent dans les réponses et contient les directives minimales.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        response = client.get('/')
+        csp = response.headers.get('Content-Security-Policy', '')
+
+        assert csp != '', "CSP header manquant"
+        assert "default-src" in csp or "script-src" in csp
+        assert "unsafe-inline" not in csp, "unsafe-inline interdit dans script-src"
+        # ───────────────────────────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 3 — AUTHENTIFICATION & SESSIONS (20 pts)
+# ═══════════════════════════════════════════════════════════════
+
+class TestAuthentication:
+
+    def test_password_not_md5(self, app):
+        """
+        TODO : Vérifier que les mots de passe ne sont pas hashés en MD5.
+        Un hash MD5 fait 32 caractères hexadécimaux.
+        Un hash bcrypt commence par $2b$.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        with app.app_context():
+            user = User.query.filter_by(email='alice@test.com').first()
+            pwd_hash = user.password_hash
+
+            # Ne doit pas être MD5 (32 hex chars)
+            assert not re.match(r'^[a-f0-9]{32}$', pwd_hash), \
+                "MD5 détecté ! Utiliser bcrypt."
+
+            # Doit être bcrypt
+            assert pwd_hash.startswith('$2b$') or pwd_hash.startswith('$2a$'), \
+                "Le hash doit être bcrypt."
+        # ───────────────────────────────────────────────────────
+
+    def test_rate_limiting_login(self, client):
+        """
+        TODO : Vérifier que le rate limiting est en place sur /login.
+        Après N tentatives échouées, l'application doit retourner 429.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        failed_attempts = 0
+        got_rate_limited = False
+
+        for i in range(10):
+            response = client.post('/login', data={
+                'email': 'alice@test.com',
+                'password': f'wrong_password_{i}'
+            })
+            if response.status_code == 429:
+                got_rate_limited = True
+                break
+            failed_attempts += 1
+
+        assert got_rate_limited, \
+            f"Rate limiting non déclenché après {failed_attempts} tentatives"
+        # ───────────────────────────────────────────────────────
+
+    def test_session_cookie_httponly(self, client):
+        """
+        TODO : Vérifier que le cookie de session a le flag HttpOnly.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        client.post('/login', data={
+            'email': 'alice@test.com',
+            'password': 'Alice123!'
+        })
+        cookies = client.cookie_jar
+        for cookie in cookies:
+            if 'session' in cookie.name.lower() or 'sid' in cookie.name.lower():
+                assert cookie.has_nonstandard_attr('HttpOnly') or \
+                       getattr(cookie, '_rest', {}).get('HttpOnly') is not None, \
+                    "Cookie de session sans flag HttpOnly"
+        # ───────────────────────────────────────────────────────
+
+    def test_session_invalidated_on_logout(self, alice_client):
+        """
+        TODO : Vérifier que la session est bien invalidée après logout.
+        Une requête authentifiée après logout doit retourner 401 ou redirect.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        # Vérifier qu'on est bien connecté
+        response_before = alice_client.get('/profile')
+        assert response_before.status_code == 200
+
+        # Se déconnecter
+        alice_client.get('/logout')
+
+        # Une route protégée doit être inaccessible
+        response_after = alice_client.get('/profile')
+        assert response_after.status_code in [302, 401], \
+            "Session toujours valide après logout"
+        # ───────────────────────────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 4 — CONTRÔLE D'ACCÈS (20 pts)
+# ═══════════════════════════════════════════════════════════════
+
+class TestAccessControl:
+
+    def test_idor_order_access_blocked(self, app, client):
+        """
+        TODO : Alice ne doit pas pouvoir accéder à la commande de Bob.
+        Créer une commande pour Bob, tenter d'y accéder avec Alice.
+        Résultat attendu : 403 ou 404.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        with app.app_context():
+            # Récupérer les IDs
+            alice = User.query.filter_by(email='alice@test.com').first()
+            bob   = User.query.filter_by(email='bob@test.com').first()
+
+            # Créer une commande appartenant à Bob
+            bob_order = Order(
+                user_id=bob.id,
+                product='Secret Product',
+                amount=999.99
+            )
+            db.session.add(bob_order)
+            db.session.commit()
+            bob_order_id = bob_order.id
+
+        # Connecter Alice
+        client.post('/login', data={
+            'email': 'alice@test.com',
+            'password': 'Alice123!'
+        })
+
+        # Alice tente d'accéder à la commande de Bob
+        response = client.get(f'/api/orders/{bob_order_id}')
+        assert response.status_code in [403, 404], \
+            f"IDOR : Alice peut accéder à la commande de Bob ! (status {response.status_code})"
+        # ───────────────────────────────────────────────────────
+
+    def test_mass_assignment_is_admin_blocked(self, client):
+        """
+        TODO : Vérifier que l'inscription avec is_admin=true
+        ne crée pas un compte administrateur.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        response = client.post('/register', data={
+            'email': 'hacker@test.com',
+            'username': 'hacker',
+            'password': 'Hack123!',
+            'bio': 'innocent bio',
+            'is_admin': 'true',      # tentative de mass assignment
+            'role': 'admin',         # autre tentative
+        })
+
+        # Vérifier que le compte créé n'est PAS admin
+        # ─── À COMPLÉTER ─────────────────────────────────────
+        pass
+        # ───────────────────────────────────────────────────────
+
+    def test_admin_panel_requires_admin_role(self, alice_client):
+        """
+        TODO : Vérifier que /admin est inaccessible à un utilisateur normal.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        response = alice_client.get('/admin')
+        assert response.status_code in [302, 403], \
+            "Panel admin accessible à un utilisateur non-admin"
+        # ───────────────────────────────────────────────────────
+
+    def test_csrf_protection_active(self, alice_client):
+        """
+        TODO : Vérifier que les requêtes POST sans token CSRF sont rejetées.
+        Une requête POST /profile/update sans csrf_token doit retourner 400.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        response = alice_client.post('/profile/update', data={
+            'username': 'newname'
+            # Pas de csrf_token intentionnellement
+        })
+        assert response.status_code == 400, \
+            "Requête sans CSRF token acceptée !"
+        # ───────────────────────────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION 5 — INJECTIONS AVANCÉES (BONUS - 10 pts)
+# ═══════════════════════════════════════════════════════════════
+
+class TestAdvancedInjections:
+
+    def test_ssti_blocked(self, client):
+        """
+        TODO : Vérifier que le SSTI sur /hello est bloqué.
+        Le payload {{ 7*7 }} ne doit pas retourner 49.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        response = client.get('/hello?name={{ 7*7 }}')
+        data = response.get_data(as_text=True)
+        assert '49' not in data, \
+            "SSTI détecté : {{ 7*7 }} a été évalué → résultat 49"
+        # ───────────────────────────────────────────────────────
+
+    def test_path_traversal_blocked(self, alice_client):
+        """
+        TODO : Vérifier que le path traversal sur /download est bloqué.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        payloads = [
+            '../../../etc/passwd',
+            '..%2F..%2F..%2Fetc%2Fpasswd',
+            '....//....//etc/passwd',
+        ]
+        for payload in payloads:
+            response = alice_client.get(f'/download?filename={payload}')
+            assert response.status_code in [400, 403, 404], \
+                f"Path traversal possible avec : {payload}"
+            # Le contenu /etc/passwd ne doit jamais apparaître
+            assert 'root:' not in response.get_data(as_text=True)
+        # ───────────────────────────────────────────────────────
+
+    def test_command_injection_blocked(self, alice_client):
+        """
+        TODO : Vérifier que l'injection de commande sur /ping est bloquée.
+        """
+        # ─── À COMPLÉTER ───────────────────────────────────────
+        cmd_payloads = [
+            'localhost; id',
+            'localhost && cat /etc/passwd',
+            '$(id)',
+            '`id`',
+            'localhost | whoami',
+        ]
+        for payload in cmd_payloads:
+            response = alice_client.post('/ping', data={
+                'host': payload,
+                'csrf_token': ...  # À compléter
+            })
+            data = response.get_data(as_text=True)
+            # La sortie de la commande 'id' ne doit pas apparaître
+            assert 'uid=' not in data, \
+                f"Command injection réussie avec : {payload}"
+        # ───────────────────────────────────────────────────────
+```
+
+---
+
+### 📋 PARTIE C — Rapport d'audit *(20 pts)*
+
+```markdown
+# Template rapport_audit.md
+
+# Rapport d'Audit de Sécurité — VulnPyApp
+**Auditeurs :** Prénom NOM 1 / Prénom NOM 2
+**Date :** JJ/MM/AAAA
+**Version auditée :** student-starter (branche Git : student-starter)
+**Méthode :** OWASP Testing Guide v4.2
+
+---
+
+## 1. Résumé exécutif
+
+### 1.1 Périmètre
+Application Flask de démonstration, déployée localement via Docker.
+URL : http://localhost:5000
+
+### 1.2 Résultats en bref
+
+| Sévérité | Nombre | Exemples |
+|----------|--------|---------|
+| Critique | X      |         |
+| Élevée   | X      |         |
+| Moyenne  | X      |         |
+| Faible   | X      |         |
+| Info     | X      |         |
+
+### 1.3 Score de risque global
+[Justification en 3-5 lignes]
+
+---
+
+## 2. Vulnérabilités identifiées
+
+### VULN-001 — [Nom] — [Sévérité]
+
+| Champ | Valeur |
+|-------|--------|
+| ID | VULN-001 |
+| Titre | |
+| CWE | CWE-XXX |
+| CVSS v3.1 | X.X (Vecteur : ...) |
+| Fichier | app.py:XX |
+| Découverte par | Revue manuelle / Bandit / Test |
+
+**Description :**
+[Explication technique de la vulnérabilité]
+
+**Preuve de concept :**
+```
+[Payload ou commande démontrant la vulnérabilité]
+```
+
+**Impact :**
+[Ce qu'un attaquant peut faire]
+
+**Recommandation :**
+[Code ou configuration corrigée]
+
+---
+
+## 3. Résultats Bandit
+
+[Copier-coller le résumé + analyse des faux positifs/négatifs]
+
+## 4. Résultats Safety / pip-audit
+
+[CVE identifiées dans les dépendances + plan de mise à jour]
+
+## 5. Résultats pytest
+
+```
+Résultats branche vulnérable :
+  FAILED tests/ ... XX tests
+  PASSED tests/ ...  X tests
+
+Résultats branche remediated :
+  PASSED tests/ ... XX tests
+```
+
+## 6. Recommandations priorisées
+
+| Priorité | Action | Effort | Impact |
+|----------|--------|--------|--------|
+| P1 | | Faible/Moyen/Élevé | Critique |
+| P2 | | | |
+...
+
+## 7. Conclusion
+
+[Évaluation globale du niveau de sécurité + points positifs]
+```
+
+---
+
+### ⚖️ Grille d'évaluation — Exercice 2.B
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                       GRILLE D'ÉVALUATION                          │
+│                Audit & Tests de Sécurité — Séance 2                │
+├──────────────────────────────────────┬────────┬────────────────────┤
+│ Critère                              │ Points │ Barème détaillé    │
+├──────────────────────────────────────┼────────┼────────────────────┤
+│ PARTIE A — Audit outillé             │ /40    │                    │
+│  A1 - Rapport Bandit complet         │ /10    │ Stats + analyse FP │
+│  A2 - Rapport Safety/pip-audit       │ /10    │ CVE + fix proposé  │
+│  A3 - Checklist OWASP Top 10         │ /20    │ 2pt par catégorie  │
+├──────────────────────────────────────┼────────┼────────────────────┤
+│ PARTIE B — Tests pytest              │ /40    │                    │
+│  Section 1 - SQLi (5 tests)          │ /10    │ 2pt par test       │
+│  Section 2 - XSS (5 tests)           │ /10    │ 2pt par test       │
+│  Section 3 - Auth (4 tests)          │ /10    │ 2.5pt par test     │
+│  Section 4 - Access Control (4 tests)│ /10    │ 2.5pt par test     │
+├──────────────────────────────────────┼────────┼────────────────────┤
+│ PARTIE C — Rapport d'audit           │ /20    │                    │
+│  Structure et clarté                 │ /5     │                    │
+│  Qualité technique des analyses      │ /10    │                    │
+│  Recommandations pertinentes         │ /5     │                    │
+├──────────────────────────────────────┼────────┼────────────────────┤
+│ BONUS                                │        │                    │
+│  Section 5 - Tests avancés (3 tests) │ +10    │                    │
+│  Pipeline CI/CD intégré              │ +5     │                    │
+│  Rapport au format PDF professionnel │ +3     │                    │
+├──────────────────────────────────────┼────────┼────────────────────┤
+│ TOTAL                                │ /100   │                    │
+└──────────────────────────────────────┴────────┴────────────────────┘
+
+Pénalités :
+  - Tests copiés/identiques sans adaptation   : -20 pts
+  - Rapport < 2 pages                         : -10 pts
+  - Dépôt Git absent ou non accessible        : -15 pts
+  - Retard (>24h)                             : -10 pts/jour
+```
+
+---
+
+## 📅 Récapitulatif des rendus
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                    CALENDRIER DES RENDUS                          │
+├─────────────┬──────────────────────────┬────────────┬────────────┤
+│ Exercice    │ Description              │ Deadline   │ Poids      │
+├─────────────┼──────────────────────────┼────────────┼────────────┤
+│ 1.A         │ Lab guidé (en séance)    │ Séance 1   │ -          │
+│ 1.B         │ CTF SQLi & XSS           │ S1 + 7j    │ 20%        │
+│ 1.C         │ Quiz fondamentaux (QCM)  │ Fin séance │ 10%        │
+│ 2.A         │ Revue de code (en séance)│ Séance 2   │ 15%        │
+│ 2.B         │ Audit + pytest           │ S2 + 7j    │ 25%        │
+│ 3 (projet)  │ Sécurisation app Django  │ S3 + 14j   │ 30%        │
+├─────────────┼──────────────────────────┼────────────┼────────────┤
+│ TOTAL       │                          │            │ 100%       │
+└─────────────┴──────────────────────────┴────────────┴────────────┘
+
+Format de rendu : Archive ZIP nommée <NOM1>_<NOM2>_<exercice>.zip
+Plateforme     : Moodle (lien fourni par l'enseignant)
+Contact        : securite@institution.fr
+```
