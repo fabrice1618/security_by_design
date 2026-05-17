@@ -200,6 +200,7 @@ def download():
 # ============================================================
 @app.route('/ping', methods=['GET', 'POST'])
 def ping():
+    result = None
     if request.method == 'POST':
         host = request.form.get('host', '')
         # 🚨 VULNÉRABLE : injection de commande via shell=True
@@ -212,15 +213,7 @@ def ping():
             ).decode()
         except Exception as e:
             result = f"Error: {str(e)}"
-        return f"<pre>{result}</pre><a href='/ping'>Back</a>"
-
-    return '''
-        <h2>Ping Tool</h2>
-        <form method="POST">
-            <input name="host" placeholder="example.com">
-            <button>Ping</button>
-        </form>
-    '''
+    return render_template('ping.html', result=result)
 
 
 # ============================================================

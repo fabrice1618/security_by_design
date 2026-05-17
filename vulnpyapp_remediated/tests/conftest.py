@@ -47,7 +47,7 @@ def _seed_db():
     alice.set_password('Alice123!')
 
     bob = User(email='bob@vulnpyapp.local', username='bob', is_admin=False)
-    bob.set_password('Bob123!')
+    bob.set_password('Bobby123!')
 
     _db.session.add_all([admin, alice, bob])
     _db.session.commit()

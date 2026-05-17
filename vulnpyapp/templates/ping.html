@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Ping{% endblock %}
+{% block content %}
+<h2>Ping Tool</h2>
+<form method="POST">
+    <input name="host" placeholder="example.com">
+    <button>Ping</button>
+</form>
+
+{% if result %}
+    <pre>{{ result }}</pre>
+    <a href="{{ url_for('ping') }}">Back</a>
+{% endif %}
+{% endblock %}

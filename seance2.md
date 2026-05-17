@@ -282,7 +282,7 @@ import requests
 session = requests.Session()
 session.post('http://localhost:5000/login', data={
     'email': 'bob@vulnpyapp.local',
-    'password': 'Bob123!'
+    'password': 'Bobby123!'
 })
 
 print("🔍 Test IDOR sur /api/orders/<id>")
@@ -1994,7 +1994,7 @@ def app():
         alice = User(email='alice@test.com', username='alice', is_admin=False)
         alice.set_password('Alice123!')
         bob = User(email='bob@test.com', username='bob', is_admin=False)
-        bob.set_password('Bob123!')
+        bob.set_password('Bobby123!')
         admin = User(email='admin@test.com', username='admin', is_admin=True)
         admin.set_password('Admin123!')
         db.session.add_all([alice, bob, admin])

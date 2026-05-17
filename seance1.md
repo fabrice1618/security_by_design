@@ -321,7 +321,7 @@ vulnpyapp/
 |-------|--------------|------|
 | `admin@vulnpyapp.local` | `Admin123!` | admin |
 | `alice@vulnpyapp.local` | `Alice123!` | utilisateur |
-| `bob@vulnpyapp.local` | `Bob123!` | utilisateur |
+| `bob@vulnpyapp.local` | `Bobby123!` | utilisateur |
 
 ### 1.3.2 Outils nécessaires
 
@@ -1169,7 +1169,7 @@ curl http://localhost:5000
 
 # 4. Comptes de test disponibles
 # alice@vulnpyapp.local / Alice123!  (utilisateur normal)
-# bob@vulnpyapp.local   / Bob123!   (utilisateur normal)
+# bob@vulnpyapp.local   / Bobby123!   (utilisateur normal)
 # admin@vulnpyapp.local / Admin123! (admin - à découvrir !)
 ```
 

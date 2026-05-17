@@ -18,7 +18,7 @@ def init_database():
 
         bob = User(email='bob@vulnpyapp.local', username='bob',
                    is_admin=False, bio='Regular user Bob')
-        bob.set_password('Bob123!')
+        bob.set_password('Bobby123!')
 
         db.session.add_all([admin, alice, bob])
         db.session.commit()

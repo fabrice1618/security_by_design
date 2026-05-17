@@ -36,4 +36,4 @@ docker-compose up --build
 |-------|--------------|------|
 | admin@vulnpyapp.local | Admin123! | admin |
 | alice@vulnpyapp.local | Alice123! | user |
-| bob@vulnpyapp.local | Bob123! | user |
+| bob@vulnpyapp.local | Bobby123! | user |
