@@ -8,6 +8,20 @@ remédiée, les supports de cours et une présentation Marp.
 > vulnérabilités intentionnelles. Ne jamais la déployer sur Internet ou sur un
 > réseau de production.
 
+## 🚀 Pour commencer — chemin de lecture
+
+Si vous découvrez ce dépôt pour la première fois, suivez cet ordre :
+
+1. **Ce fichier (README.md)** — vue d'ensemble, tableau des 15 vulnérabilités, démarrage rapide
+2. **`seance1.md`** — cours magistral Séance 1 : fondamentaux CIA/RGPD, injections SQL, XSS, protections navigateur + Exercices 1.A, 1.B, 1.C
+3. **`seance2.md`** — cours magistral Séance 2 : CSRF, IDOR, Mass Assignment, SSTI, authentification, sessions, SDLC, OWASP API + Exercices 2.A, 2.B
+4. **`seance3.md`** — projet final : sécurisation d'application Django (30% de la note)
+5. **`vulnpyapp/`** — application Flask vulnérable à utiliser pendant les exercices
+6. **`docs/guide_correction.md`** — guide pas-à-pas par vulnérabilité (à consulter après avoir essayé par vous-même)
+7. **`quiz1c.md`** — Quiz fondamentaux (Exercice 1.C, fin de Séance 1)
+
+---
+
 ## Structure du dépôt
 
 ```
@@ -90,13 +104,15 @@ pytest tests/ -v --cov=. --cov-fail-under=80
 ## Supports de cours
 
 - **`seance1.md`** — Fondamentaux (CIA, RGPD, OWASP Top 10), injections SQL,
-  XSS, protections navigateur (SOP / CORS / CSP).
-- **`seance2.md`** — CSRF, IDOR, Mass Assignment, authentification sécurisée
+  XSS, protections navigateur (SOP / CORS / CSP), Path Traversal, Command Injection + Exercices 1.A, 1.B (CTF), 1.C (Quiz).
+- **`seance2.md`** — CSRF, IDOR, Mass Assignment, SSTI, authentification sécurisée
   (Argon2, MFA, reset), sessions, headers, rate limiting, SDLC sécurisé,
-  OWASP API Top 10.
+  OWASP API Top 10, synthèse RGPD + Exercices 2.A, 2.B.
+- **`seance3.md`** — Projet final : sécurisation d'une application web (audit complet, remédiation, tests, rapport professionnel).
 - **`docs/guide_correction.md`** — pour chaque vulnérabilité : localisation,
-  code vulnérable, exploitation, correctif et vérification.
+  code vulnérable, exploitation, correctif et vérification (corrigé pédagogique, consulter après tentatives).
 - **`docs/presentation.md`** — synthèse au format Marp (38 slides).
+- **`quiz1c.md`** — Quiz 1.C (questions uniquement) — corrigé réservé à l'enseignant dans `docs/quiz1c_corrige.md`.
 
 ### Régénérer la présentation
 
@@ -116,7 +132,7 @@ npx --yes @marp-team/marp-cli@latest docs/presentation.md --pdf
 | 2.B | Audit Bandit/Safety + tests pytest | S2 + 7 j | 25 % |
 | 3   | Projet : sécurisation d'une app Django | S3 + 14 j | 30 % |
 
-Détail complet dans `seance1.md` et `seance2.md`.
+Détail complet dans `seance1.md`, `seance2.md` et `seance3.md`.
 
 ## Audit statique (CI)
 

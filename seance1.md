@@ -178,19 +178,15 @@ L'**OWASP Top 10** (Open Worldwide Application Security Project) est la liste de
 
 ---
 
-## Module 1.2 - RGPD pour développeurs (20 min)
+## Module 1.2 - Introduction au RGPD (5 min)
 
-> **Objectifs** — À l'issue de ce module, vous serez capables de :
-> - Nommer les principes RGPD qui s'appliquent directement au code (minimisation, privacy by design, durée de conservation)
-> - Traduire les articles 17 et 20 du RGPD en méthodes concrètes dans un modèle de données Python
-> - Identifier les données personnelles collectées par une application et évaluer les risques associés
-> - Décrire la procédure de notification CNIL et les délais imposés en cas de violation de données
+> **Objectif** — Comprendre que la protection des données personnelles n'est pas un complément de sécurité, mais une obligation légale qui s'intègre au code.
 
 ### 1.2.1 Principes fondamentaux
 
 Le RGPD (Règlement Général sur la Protection des Données) impose des obligations techniques :
 
-**Article 5 - Principes**
+**Article 5 - Principes fondamentaux**
 - **Licéité, loyauté, transparence** : base légale claire
 - **Limitation des finalités** : usage déterminé
 - **Minimisation** : collecter le strict nécessaire
@@ -198,96 +194,18 @@ Le RGPD (Règlement Général sur la Protection des Données) impose des obligat
 - **Limitation de conservation** : durée définie
 - **Intégrité et confidentialité** : sécurité technique
 
-**Article 25 - Privacy by Design and by Default**
+**Article 25 - Privacy by Design**
 - Protection des données dès la conception
 - Paramètres protecteurs par défaut
 
-**Privacy by Design en pratique** :
-- **Minimisation** : ne stocker que les champs nécessaires (ex. âge au lieu de la date de naissance complète)
-- **Pseudonymisation** : remplacer l'email par un identifiant pseudonyme dans les logs applicatifs
-- **Sécurité par défaut** : profil privé, MFA proposé à l'inscription, désactivation du tracking
-- **Consentement tracé** : horodatage de chaque consentement, possibilité de révoquer à tout moment
+> **À retenir pour le moment**
+> - **Privacy by Design** : la sécurité des données doit être intégrée dès la conception, pas en ajout tardif
+> - **Minimisation** : ne stocker que ce qui est strictement nécessaire
+> - **Sanctions** : jusqu'à 4 % du chiffre d'affaires mondial en cas de violation
 
-**Cycle de vie d'une donnée personnelle** :
+---
 
-```mermaid
-graph LR
-    A["Collecte<br/>minimisation"] --> B["Traitement<br/>base légale"]
-    B --> C["Stockage<br/>chiffrement + accès limité"]
-    C --> D["Conservation<br/>durée définie"]
-    D --> E["Suppression<br/>ou anonymisation"]
-```
-
-### 1.2.2 Implémentation technique en Python
-
-```python
-# Exemple : minimisation des données dans un modèle
-from datetime import datetime, timedelta
-from dataclasses import dataclass
-
-@dataclass
-class User:
-    email: str
-    hashed_password: str
-    consent_marketing: bool = False
-    consent_date: datetime = None
-    deletion_date: datetime = None  # Suppression automatique
-
-    def request_deletion(self):
-        """Droit à l'effacement (Art. 17)"""
-        self.deletion_date = datetime.now() + timedelta(days=30)
-
-    def export_data(self):
-        """Droit à la portabilité (Art. 20)"""
-        return {
-            'email': self.email,
-            'consents': {
-                'marketing': self.consent_marketing,
-                'date': self.consent_date.isoformat() if self.consent_date else None
-            }
-        }
-```
-
-### 1.2.3 Obligations en cas de fuite
-
-- **Notification CNIL** : sous 72h
-- **Notification aux personnes concernées** : si risque élevé
-- **Documentation** : registre des violations
-- **Sanctions** : jusqu'à 4% du CA mondial ou 20M€
-
-**Processus de notification** :
-
-```mermaid
-graph TD
-    F["Violation de données<br/>détectée"] --> Eval{"Risque pour<br/>les droits?"}
-    Eval -->|Non| Doc["Documentation interne<br/>registre des violations"]
-    Eval -->|Oui| CNIL["Notification CNIL<br/>sous 72h"]
-    CNIL --> Eval2{"Risque élevé?"}
-    Eval2 -->|Oui| Users["Notification personnes<br/>concernées sans délai"]
-    Eval2 -->|Non| Doc
-    Users --> Doc
-    style CNIL fill:#ffcc00,stroke:#cc9900
-    style Users fill:#ff8888,stroke:#cc0000
-```
-
-### 1.2.4 Tableau données personnelles → risques → mesures techniques
-
-| Type de données | Risques principaux | Mesures techniques |
-|---|---|---|
-| Mots de passe | Vol, bruteforce, dump de BDD | Hash Argon2/bcrypt + sel unique, politique de complexité, vérification HaveIBeenPwned |
-| Email / Nom | Fuite, phishing, profilage | Chiffrement au repos, pseudonymisation dans les logs, minimisation |
-| Données financières (CB, IBAN) | Fraude, non-conformité PCI-DSS | Tokenisation, chiffrement colonne, accès restreint, audit trail |
-| Tokens de session | Hijacking, CSRF | Cookies `HttpOnly` + `Secure` + `SameSite=Strict`, durée limitée, régénération à la connexion |
-| Logs applicatifs | Fuite de PII dans les logs | Filtrage des données sensibles, rétention définie, logs structurés |
-| Fichiers uploadés | Path traversal, exécution de code | Vérification MIME, renommage aléatoire, stockage hors webroot, scan antivirus |
-| Clés et secrets | Compromission totale du système | Variables d'environnement, HSM/KMS, rotation régulière, jamais en dépôt Git |
-| Données sensibles (santé, biométrie) | RGPD Art. 9, amendes maximales | Chiffrement des colonnes, ABAC strict, journalisation exhaustive |
-
-> **À retenir**
-> - **Privacy by Design** : la protection des données se code dès la conception, pas en ajout tardif.
-> - **Minimisation** : ne stocker que ce qui est strictement nécessaire — un champ de moins est un risque de moins.
-> - En cas de violation, la notification CNIL est obligatoire **sous 72 h** si le risque pour les droits des personnes est avéré.
-> - Les amendes RGPD (jusqu'à 4 % du CA mondial) s'appliquent à l'entreprise qui déploie l'application, pas uniquement à son prestataire.
+**📚 Synthèse complète :** La matrice des 15 vulnérabilités et leurs impacts RGPD sera traitée en Séance 2 — Module 2.9 une fois que toutes les vulnérabilités seront connues.
 
 ---
 
@@ -337,7 +255,7 @@ vulnpyapp/
 ├── vulnpyapp.db        # SQLite (généré par init_db.py)
 ├── templates/          # Templates Jinja2 (search, profile, comments...)
 ├── static/             # Assets statiques (style.css)
-├── uploads/            # Dossier pour /download (path traversal)
+├── uploads/            # Dossier pour /download (path traversal — voir Module 1.7)
 ├── solutions/          # Scripts d'exploit (enseignant uniquement)
 ├── tests/              # Tests pytest
 ├── requirements.txt
@@ -971,6 +889,161 @@ def profile():
 
 ---
 
+## Module 1.7 - Injections système : Path Traversal et Command Injection (20 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Identifier et exploiter une vulnérabilité de traversée de répertoire
+> - Identifier et exploiter une injection de commandes système
+> - Comprendre pourquoi `shell=True` est dangereux en Python
+> - Implémenter des défenses : listes blanches, validation stricte, séparation des arguments
+
+### 1.7.1 Path Traversal (Traversée de répertoire)
+
+**Principe :** Un utilisateur peut traverser la hiérarchie de répertoires en utilisant `../` pour accéder à des fichiers en dehors du répertoire attendu.
+
+**Exemple vulnérable :**
+```python
+# Route /download?file=rapport.pdf
+@app.route('/download')
+def download():
+    filename = request.args.get('file', '')
+    filepath = os.path.join('uploads', filename)
+    return send_file(filepath, as_attachment=True)
+
+# Attaque :
+# /download?file=../../etc/passwd    → accès à /etc/passwd
+# /download?file=../app.py           → code source exposé
+```
+
+**Impact :** Vol de fichiers sensibles (config, code source, données client).
+
+**Exploits pratiques :**
+```bash
+curl "http://localhost:5000/download?file=../app.py"
+curl "http://localhost:5000/download?file=../../etc/passwd"
+```
+
+**Défense — couches successives :**
+
+1. **secure_filename()** — supprime les caractères dangereux
+```python
+from werkzeug.utils import secure_filename
+safe_name = secure_filename('../../etc/passwd')  # → 'etcpasswd'
+```
+
+2. **Vérification d'extension** — liste blanche
+```python
+ALLOWED_EXTS = {'pdf', 'txt', 'docx'}
+if not safe_name.lower().split('.')[-1] in ALLOWED_EXTS:
+    abort(400)
+```
+
+3. **Vérification du chemin réel** — `realpath()` + commonpath
+```python
+import os
+base_real = os.path.realpath('uploads')
+target = os.path.realpath(os.path.join(base_real, safe_name))
+
+# Vérifier que target reste dans base_real
+if os.path.commonpath([base_real, target]) != base_real:
+    abort(404)  # Fichier hors de uploads/
+```
+
+4. **send_from_directory()** — protection intégrée de Flask
+```python
+return send_from_directory('uploads', safe_name, as_attachment=True)
+```
+
+> **À retenir**
+> - Ne jamais faire confiance aux noms de fichiers utilisateurs
+> - Toujours utiliser `os.path.realpath()` + vérification du chemin
+> - CWE-22, OWASP A01 : Path Traversal
+
+---
+
+### 1.7.2 Injection de commandes système
+
+**Principe :** Un utilisateur peut injecter des commandes système si `subprocess` utilise `shell=True` avec une entrée non validée.
+
+**Exemple vulnérable :**
+```python
+import subprocess
+
+@app.route('/ping', methods=['POST'])
+def ping():
+    host = request.form.get('host', '')
+    # ❌ VULNÉRABLE : shell=True + pas de validation
+    result = subprocess.check_output(
+        f"ping -c 1 {host}",  # f-string = concaténation
+        shell=True
+    ).decode()
+    return result
+
+# Attaque :
+# POST /ping → host='localhost; cat /etc/passwd'
+# Commande exécutée : ping -c 1 localhost; cat /etc/passwd
+# → Les deux commandes s'exécutent séquentiellement
+```
+
+**Impact :** Exécution arbitraire de code système — accès total au serveur.
+
+**Exploits pratiques :**
+```bash
+curl -X POST http://localhost:5000/ping \
+  -d "host=localhost; id"
+curl -X POST http://localhost:5000/ping \
+  -d "host=localhost; cat /etc/passwd"
+```
+
+**Défense — pourquoi `shell=False` protège :**
+
+```python
+import subprocess
+from security import is_safe_host  # Validation anti-SSRF
+
+@app.route('/ping', methods=['POST'])
+@login_required
+def ping():
+    host = request.form.get('host', '')
+    
+    # ✅ Validation stricte
+    if not is_safe_host(host):
+        return "Host not allowed", 400
+    
+    # ✅ Liste d'arguments, NOT une chaîne → shell=False
+    result = subprocess.run(
+        ['ping', '-c', '1', '-W', '2', host],  # ← Liste, pas f-string
+        capture_output=True,
+        text=True,
+        timeout=5,
+        shell=False  # ← Pas de shell = pas d'interprétation de ; | &
+    )
+    return result.stdout
+```
+
+**Pourquoi cela fonctionne :**
+```
+shell=True  → /bin/sh -c "ping -c 1 localhost; cat /etc/passwd"
+              Le shell voit ; et exécute les deux commandes ❌
+
+shell=False → execve('ping', ['-c', '1', '-W', '2', 'localhost; cat /etc/passwd'])
+              Le programme 'ping' reçoit le payload comme argument littéral
+              → ping ne reconnaît pas cet argument et échoue silencieusement ✅
+```
+
+**Règle d'or :**
+- **Jamais** `subprocess.check_output(f"...", shell=True)`
+- **Toujours** `subprocess.run(['cmd', 'arg1', 'arg2'], shell=False)`
+- **Valider** l'entrée contre une allowlist (hostname, IP publique)
+
+> **À retenir**
+> - CWE-78 : Injection de commandes système (OWASP A03)
+> - `shell=True` est une mine anti-personnel : éviter absolument
+> - Passer les arguments sous forme de liste `['cmd', 'arg']` empêche l'injection
+> - Toujours valider + limiter les entrées possibles (allowlist)
+
+---
+
 ## Module 1.6 - Protections navigateur (30 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
@@ -1324,11 +1397,11 @@ Rapport attendu :
 
 ---
 
-#### Challenge 3 — IDOR & Information Disclosure *(20 pts)*
+#### Challenge 3 — Énumération d'API & Information Disclosure *(20 pts)*
 
-**Contexte :** La route `/api/users/<id>` expose les données des utilisateurs sans vérifier que le demandeur est le propriétaire du compte.
+**Contexte :** Vous venez de découvrir que la route `/api/users/<id>` retourne des données utilisateur sans demander de vérification supplémentaire. Analysez ce qui est accessible.
 
-**Objectif :** Énumérer les utilisateurs enregistrés et identifier les comptes administrateurs via itération d'ID.
+**Objectif :** Sans nécessairement connaître le nom technique de cette vulnérabilité, énumérez les utilisateurs en itérant sur les IDs et cartographiez l'impact informationnel.
 
 **Principe :**
 ```
@@ -1336,17 +1409,17 @@ Rapport attendu :
 /api/users/2   → { "id": 2, "email": "alice@...",  "is_admin": false, ... }
 /api/users/3   → { "id": 3, "email": "bob@...",    "is_admin": false, ... }
 
-→ En itérant les ID, vous pouvez cartographier tous les utilisateurs
-  et leurs rôles (admin ou non).
+→ En itérant les ID, vous pouvez mapper les données exposées par défaut
 ```
 
 **Travail attendu :**
-1. Script Python (`exploit_idor_users.py`) automatisant l'extraction
-2. Fichier `users_dump.json` listant tous les utilisateurs avec leur rôle
-3. Capture d'écran prouvant l'accès non autorisé aux données d'un autre utilisateur
-4. Analyse d'impact : chaîne de compromission possible avec ces informations
+1. Script Python (`exploit_api_enum.py`) automatisant l'énumération des utilisateurs
+2. Fichier `users_enumeration.json` listant les utilisateurs découverts et les champs exposés
+3. Analyse d'impact : quelles informations sensibles sont accessibles sans authentification ?
 
-**Bonus :** Proposer une correction empêchant cette fuite d'information
+**Bonus facultatif :** Proposer une correction empêchant cette énumération
+
+> **📚 Note pédagogique :** Cette vulnérabilité appartient à la famille **IDOR** (Insecure Direct Object Reference), qui sera formalisée et expliquée en profondeur en Séance 2 — Module 2.2. Vous l'explorez maintenant de manière empirique pour développer votre intuition de sécurité.
 
 ---
 
@@ -1536,6 +1609,8 @@ Pénalités :
   - Code copié sans compréhension démontrée : -30 pts
   - Rendu en retard (>24h) : -10 pts/jour
 ```
+
+> **📚 Ressource d'aide** : Si vous êtes bloqué depuis plus de 20 minutes sur une vulnérabilité, consultez `docs/guide_correction.md` — ce guide contient des indices progressifs (niveau 1 → niveau 2 → solution complète) pour les vulnérabilités #1 à #15.
 
 ---
 

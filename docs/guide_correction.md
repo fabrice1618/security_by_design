@@ -1336,3 +1336,148 @@ def rate_limited(e):
 ```bash
 pytest tests/test_security.py::TestRateLimiting -v
 ```
+
+---
+
+## 🟡 CORRECTION #15 — Headers de sécurité absents
+
+### Localisation
+```
+Fichier : vulnpyapp/app.py, vulnpyapp/config.py
+Absence : Flask-Talisman, headers HSTS, X-Frame-Options, X-Content-Type-Options
+Route : Toutes les réponses HTTP
+CWE-693 : Missing Security Header
+```
+
+### Code vulnérable
+
+**vulnpyapp/app.py — absence de middleware Talisman**
+```python
+# ❌ VULNÉRABLE
+from flask import Flask
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'default-insecure'
+
+# Aucun header de sécurité n'est défini
+# Les réponses HTTP exposent des informations et permettent des attaques navigateur
+```
+
+**Preuve de vulnérabilité**
+```bash
+curl -I http://localhost:5000/
+# Réponse : aucun header HSTS, CSP, X-Frame-Options, etc.
+# L'attaquant sait que c'est Flask (Server: Werkzeug/...)
+```
+
+### ✅ Solution complète (vulnpyapp_remediated/)
+
+**extensions.py — initialiser Flask-Talisman**
+```python
+from flask_talisman import Talisman
+
+talisman = Talisman()
+
+def init_security(app):
+    """Initialise les headers de sécurité via Flask-Talisman"""
+    talisman.init_app(
+        app,
+        force_https=True,
+        strict_transport_security=True,
+        strict_transport_security_max_age=31536000,  # 1 an
+        content_security_policy={
+            'default-src': "'self'",
+            'script-src': ["'self'", "'unsafe-inline'"],  # À affiner selon le projet
+            'style-src': ["'self'", "'unsafe-inline'"],
+            'img-src': "'self'",
+            'font-src': "'self'",
+        },
+        content_security_policy_nonce_in=['script-src'],
+        referrer_policy='strict-origin-when-cross-origin',
+        x_frame_options='SAMEORIGIN',
+        x_content_type_options='nosniff',
+        x_xss_protection='1; mode=block',
+    )
+```
+
+**app.py — créer_app() intègre les headers**
+```python
+from flask import Flask
+from extensions import talisman, db, login_manager, csrf
+from logging_config import configure_logging
+from security import sanitize_html, admin_required
+
+def create_app(config_name='production'):
+    """Factory pattern avec headers de sécurité"""
+    app = Flask(__name__)
+    
+    # Configuration
+    if config_name == 'production':
+        app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-in-prod')
+        app.config['DEBUG'] = False
+    else:
+        app.config['DEBUG'] = True
+        app.config['SECRET_KEY'] = 'dev-key'
+    
+    # Initialiser extensions
+    db.init_app(app)
+    login_manager.init_app(app)
+    csrf.init_app(app)
+    talisman.init_app(app)  # ✅ Headers de sécurité
+    
+    # Configurer logging structuré
+    configure_logging(app)
+    
+    # Enregistrer blueprints
+    # ...
+    
+    return app
+```
+
+### Impact de la correction
+
+**Avant (vulnérable)** :
+```
+HTTP/1.1 200 OK
+Server: Werkzeug/2.0
+Content-Type: text/html; charset=utf-8
+
+<!-- Aucun header de sécurité → attaquant sait le stack technologique -->
+```
+
+**Après (sécurisé)** :
+```
+HTTP/1.1 200 OK
+Server: Werkzeug/2.0
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+
+<!-- Navigateur applique les restrictions : MITM, clickjacking, sniffing bloqués -->
+```
+
+### Headers détaillés
+
+| Header | Bénéfice | Valeur recommandée |
+|--------|----------|-------------------|
+| HSTS | Force HTTPS, prévient MITM | `max-age=31536000; includeSubDomains` |
+| X-Frame-Options | Bloque clickjacking | `SAMEORIGIN` ou `DENY` |
+| X-Content-Type-Options | Prévient MIME sniffing | `nosniff` |
+| CSP | Bloque les scripts injectés | `default-src 'self'` (puis affiner) |
+| X-XSS-Protection | Désactive XSS filter dangereux | `1; mode=block` ou `;` |
+| Referrer-Policy | Limite l'info de referrer | `strict-origin-when-cross-origin` |
+
+### Vérification
+
+```bash
+# Test des headers
+curl -I https://localhost:5000/ | grep -E "HSTS|CSP|X-Frame|X-Content"
+
+# Tests automatisés
+pytest tests/test_security.py::TestSecurityHeaders -v
+```
+
+---
