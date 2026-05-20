@@ -193,10 +193,10 @@ Le RGPD (Règlement Général sur la Protection des Données) impose des obligat
 
 ```mermaid
 graph LR
-    A[Collecte<br/>minimisation] --> B[Traitement<br/>base légale]
-    B --> C[Stockage<br/>chiffrement + accès limité]
-    C --> D[Conservation<br/>durée définie]
-    D --> E[Suppression<br/>ou anonymisation]
+    A["Collecte<br/>minimisation"] --> B["Traitement<br/>base légale"]
+    B --> C["Stockage<br/>chiffrement + accès limité"]
+    C --> D["Conservation<br/>durée définie"]
+    D --> E["Suppression<br/>ou anonymisation"]
 ```
 
 ### 1.2.2 Implémentation technique en Python
@@ -240,11 +240,11 @@ class User:
 
 ```mermaid
 graph TD
-    F[Violation de données<br/>détectée] --> Eval{Risque pour<br/>les droits?}
-    Eval -->|Non| Doc[Documentation interne<br/>registre des violations]
-    Eval -->|Oui| CNIL[Notification CNIL<br/>sous 72h]
-    CNIL --> Eval2{Risque élevé?}
-    Eval2 -->|Oui| Users[Notification personnes<br/>concernées sans délai]
+    F["Violation de données<br/>détectée"] --> Eval{"Risque pour<br/>les droits?"}
+    Eval -->|Non| Doc["Documentation interne<br/>registre des violations"]
+    Eval -->|Oui| CNIL["Notification CNIL<br/>sous 72h"]
+    CNIL --> Eval2{"Risque élevé?"}
+    Eval2 -->|Oui| Users["Notification personnes<br/>concernées sans délai"]
     Eval2 -->|Non| Doc
     Users --> Doc
     style CNIL fill:#ffcc00,stroke:#cc9900
@@ -430,12 +430,12 @@ SELECT * FROM users WHERE email = 'admin@vulnpyapp.local' --' AND password_hash 
 ```mermaid
 graph LR
     subgraph Requête normale
-        IN1[Email: alice@mail.com] --> Q1[SELECT * FROM users<br/>WHERE email = 'alice@mail.com']
+        IN1["Email: alice@mail.com"] --> Q1["SELECT * FROM users<br/>WHERE email = 'alice@mail.com'"]
         Q1 --> R1[Retourne utilisateur alice]
     end
     subgraph Requête injectée
-        IN2[Email: admin@mail.com' --] --> Q2[SELECT * FROM users<br/>WHERE email = 'admin@mail.com' --']
-        Q2 --> R2[Bypass du mot de passe<br/>Connexion en tant qu'admin]
+        IN2["Email: admin@mail.com' --"] --> Q2["SELECT * FROM users<br/>WHERE email = 'admin@mail.com' --'"]
+        Q2 --> R2["Bypass du mot de passe<br/>Connexion en tant qu'admin"]
     end
 ```
 
@@ -459,10 +459,10 @@ graph TD
     SQL[Injection SQL] --> IB[In-Band]
     SQL --> BL[Blind / Aveugle]
     SQL --> OOB[Out-of-Band]
-    IB --> E1[Error-based : messages d'erreur SQL]
-    IB --> E2[UNION-based : résultats dans la réponse]
-    BL --> B1[Boolean-based : page vraie ou fausse]
-    BL --> B2[Time-based : délai d'exécution]
+    IB --> E1["Error-based : messages d'erreur SQL"]
+    IB --> E2["UNION-based : résultats dans la réponse"]
+    BL --> B1["Boolean-based : page vraie ou fausse"]
+    BL --> B2["Time-based : délai d'exécution"]
     OOB --> O1[Exfiltration DNS]
     OOB --> O2[Exfiltration HTTP]
 ```
@@ -734,19 +734,19 @@ graph TD
         A1[Attaquant envoie un lien piégé] --> A2[Victime clique]
         A2 --> A3[Payload dans l'URL]
         A3 --> A4[Reflété dans la réponse HTML]
-        A4 --> A5[Script exécuté<br/>Victime unique]
+        A4 --> A5["Script exécuté<br/>Victime unique"]
     end
     subgraph Stored
         B1[Attaquant poste un commentaire] --> B2[Payload stocké en BDD]
         B2 --> B3[Chaque visiteur charge la page]
         B3 --> B4[Payload chargé depuis la BDD]
-        B4 --> B5[Script exécuté<br/>Tous les visiteurs]
+        B4 --> B5["Script exécuté<br/>Tous les visiteurs"]
     end
     subgraph DOM-based
         C1[URL avec paramètre/fragment] --> C2[Page statique chargée]
         C2 --> C3[JS lit location.hash / paramètre]
         C3 --> C4[innerHTML injecte le code]
-        C4 --> C5[Script exécuté<br/>Côté client uniquement]
+        C4 --> C5["Script exécuté<br/>Côté client uniquement"]
     end
 ```
 
@@ -912,10 +912,10 @@ https://app.com:443       ❌ différente de       https://app.com:8443 (port)
 
 ```mermaid
 graph LR
-    O1[https://app.com:443/page1] -- Même origine --> O2[https://app.com:443/page2]
-    O1 -- Protocole différent --> O3[http://app.com:443]
-    O1 -- Domaine différent --> O4[https://api.app.com:443]
-    O1 -- Port différent --> O5[https://app.com:8443]
+    O1["https://app.com:443/page1"] -- Même origine --> O2["https://app.com:443/page2"]
+    O1 -- Protocole différent --> O3["http://app.com:443"]
+    O1 -- Domaine différent --> O4["https://api.app.com:443"]
+    O1 -- Port différent --> O5["https://app.com:8443"]
 ```
 
 ### 1.6.2 CORS (Cross-Origin Resource Sharing)
@@ -1022,7 +1022,6 @@ def set_security_headers(response):
 | **CORS** | Exceptions contrôlées à SOP | Headers serveur |
 | **CSP** | Whitelist de sources de contenu | Header HTTP ou meta |
 | **HSTS** | Force HTTPS | Header `Strict-Transport-Security` |
-```
 
 **Séquence d'appel cross-origin avec CORS** : le navigateur envoie d'abord une requête preflight OPTIONS pour vérifier les droits, puis la requête réelle si autorisée.
 
@@ -1360,7 +1359,7 @@ if user and user.check_password(password):
 
 ### 📝 Template rapport.md
 
-```markdown
+````markdown
 # Rapport CTF - Injections SQL & XSS
 **Binôme :** Prénom NOM 1 / Prénom NOM 2
 **Date :** JJ/MM/AAAA
@@ -1409,7 +1408,7 @@ if user and user.check_password(password):
 
 ## Sources consultées
 [Références OWASP, PortSwigger, etc.]
-```
+````
 
 ---
 

@@ -261,14 +261,14 @@ def update_user(user_id):
 ```mermaid
 graph TD
     subgraph Vulnérable
-        V1[GET /api/orders/5] --> V2[Order.query.get(5)]
-        V2 --> V3[Retourne la commande<br/>sans vérifier le propriétaire]
+        V1["GET /api/orders/5"] --> V2["Order.query.get(5)"]
+        V2 --> V3["Retourne la commande<br/>sans vérifier le propriétaire"]
     end
     subgraph Sécurisé
-        S1[GET /api/orders/5] --> S2[Order.query.filter_by<br/>id=5, user_id=current_user.id]
-        S2 --> S3{user_id correspond?}
-        S3 -->|Oui| S4[Retourne la commande]
-        S3 -->|Non| S5[403 Accès interdit]
+        S1["GET /api/orders/5"] --> S2["Order.query.filter_by<br/>id=5, user_id=current_user.id"]
+        S2 --> S3{"user_id correspond?"}
+        S3 -->|Oui| S4["Retourne la commande"]
+        S3 -->|Non| S5["403 Accès interdit"]
     end
 ```
 
@@ -409,13 +409,13 @@ def get_order(public_id):
 ```mermaid
 graph LR
     subgraph Attaque
-        A1[Inscription] --> A2[Champs normaux : email, password, name]
-        A2 --> A3[Champ injecté : is_admin=true]
-        A3 --> A4[User(**data) crée un compte admin]
+        A1[Inscription] --> A2["Champs normaux : email, password, name"]
+        A2 --> A3["Champ injecté : is_admin=true"]
+        A3 --> A4["User(**data) crée un compte admin"]
     end
     subgraph Protection
-        B1[Inscription] --> B2[Schéma explicite<br/>extra = forbid]
-        B2 --> B3[Champ inconnu rejeté<br/>400 Bad Request]
+        B1[Inscription] --> B2["Schéma explicite<br/>extra = forbid"]
+        B2 --> B3["Champ inconnu rejeté<br/>400 Bad Request"]
     end
 ```
 
@@ -662,7 +662,7 @@ graph BT
     C1[Stockage en clair] --> C2[MD5 sans sel]
     C2 --> C3[SHA-256 sans sel]
     C3 --> C4[SHA-256 + sel]
-    C4 --> C5[bcrypt rounds=12]
+    C4 --> C5["bcrypt rounds=12"]
     C5 --> C6[Argon2id]
     C1 -. 0 seconde .-> T[Temps pour casser un mot de passe]
     C2 -. secondes .-> T
@@ -1305,10 +1305,10 @@ graph LR
     C[Conception] --> D[Développement]
     D --> T[Test]
     T --> DEP[Déploiement]
-    C -.-> C1[Threat modeling<br/>Architecture review]
-    D -.-> D1[Code review<br/>OWASP ASVS<br/>Linters<br/>Pre-commit hooks<br/>SCA]
-    T -.-> T1[SAST<br/>DAST<br/>Pentest<br/>Dependency audit]
-    DEP -.-> DEP1[Hardening<br/>Secrets mgmt<br/>Monitoring<br/>Incident response]
+    C -.-> C1["Threat modeling<br/>Architecture review"]
+    D -.-> D1["Code review<br/>OWASP ASVS<br/>Linters<br/>Pre-commit hooks<br/>SCA"]
+    T -.-> T1["SAST<br/>DAST<br/>Pentest<br/>Dependency audit"]
+    DEP -.-> DEP1["Hardening<br/>Secrets mgmt<br/>Monitoring<br/>Incident response"]
 ```
 
 ### 2.7.2 Outils Python pour le SDLC sécurisé
