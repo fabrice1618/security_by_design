@@ -4,7 +4,19 @@
 
 ## Module 2.1 - Cross-Site Request Forgery / CSRF (30 min)
 
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Expliquer pourquoi le navigateur envoie automatiquement les cookies et en quoi cela rend CSRF possible
+> - Créer une page malveillante démontrant une attaque CSRF sur une application vulnérable
+> - Protéger une application Flask avec Flask-WTF (tokens CSRF) et l'attribut `SameSite` des cookies
+> - Distinguer les quatre méthodes de protection CSRF et choisir la plus adaptée selon le contexte (formulaires HTML vs API JSON)
+
 ### 2.1.1 Principe d'attaque
+
+**Pourquoi CSRF est-il possible ?**
+
+Les navigateurs appliquent une règle fondamentale : pour toute requête vers un domaine, ils joignent automatiquement les cookies associés à ce domaine, **quelle que soit l'origine de la page qui a déclenché la requête**. Cette règle, conçue pour la navigation normale entre sites, devient une faille dès qu'une page malveillante l'exploite pour déclencher des actions à l'insu d'un utilisateur authentifié.
+
+L'attaquant n'a jamais besoin de connaître ni de voler le cookie de session : c'est le **navigateur de la victime** qui le fournit automatiquement. La seule condition est que la victime soit connectée au site cible et qu'elle visite une page malveillante dans la même session.
 
 CSRF exploite la confiance d'un site envers un utilisateur authentifié. Le navigateur envoie automatiquement les cookies de session, même pour des requêtes initiées depuis un autre site.
 
@@ -212,9 +224,21 @@ def check_csrf_origin():
             abort(403, description="Origin non autorisée")
 ```
 
+> **À retenir**
+> - CSRF exploite la confiance implicite du serveur envers le navigateur : les cookies de session sont envoyés automatiquement, l'attaquant n'en a jamais besoin directement.
+> - `SameSite=Strict` sur le cookie de session est la défense la plus simple et robuste — dans la majorité des cas modernes, elle seule suffit.
+> - Le token CSRF doit être **lié à la session** et à **usage unique par formulaire** pour une protection maximale.
+> - Les requêtes `GET` ne doivent **jamais** produire d'effet de bord (écriture, suppression, modification) : CSRF devient alors inapplicable sur ces routes.
+
 ---
 
 ## Module 2.2 - Insecure Direct Object Reference / IDOR (30 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Distinguer authentification et autorisation et expliquer pourquoi les deux contrôles sont indépendants
+> - Identifier une faille IDOR dans du code Python et décrire son impact concret
+> - Écrire du code Flask qui filtre les objets par propriétaire avant de les retourner
+> - Comparer les modèles RBAC, ABAC et ACL pour choisir le plus adapté à un contexte
 
 ### 2.2.0 Authentification vs Autorisation
 
@@ -398,9 +422,20 @@ def get_order(public_id):
     return jsonify(order.to_dict())
 ```
 
+> **À retenir**
+> - L'**authentification** prouve l'identité ; l'**autorisation** vérifie les droits — un utilisateur peut être authentifié sans être autorisé sur une ressource spécifique.
+> - La règle d'or IDOR : filtrer **toujours** par `user_id=current_user.id` dans la requête elle-même plutôt que de vérifier après récupération.
+> - Les UUIDs ne remplacent pas le contrôle d'accès : ils rendent l'énumération plus difficile, mais un UUID divulgué reste exploitable sans vérification de propriété.
+> - Toute vérification d'autorisation côté client uniquement (JavaScript, état UI) est contournable : la vérification **doit** se faire côté serveur.
+
 ---
 
 ## Module 2.3 - Mass Assignment et autres vulnérabilités (30 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Identifier une vulnérabilité de mass assignment et la corriger avec une allowlist ou un schéma Pydantic avec `extra = 'forbid'`
+> - Reconnaître un point d'injection SSTI dans un template Jinja2 et appliquer la correction
+> - Expliquer le risque ReDoS et appliquer les techniques de mitigation (re2, limitation de taille d'input)
 
 ### 2.3.1 Mass Assignment
 
@@ -623,11 +658,33 @@ def is_valid_email(email):
         return False
 ```
 
+> **À retenir**
+> - **Mass assignment** : ne jamais passer `request.form.to_dict()` directement à un constructeur de modèle — toujours utiliser une allowlist ou un schéma avec `extra = 'forbid'`.
+> - **SSTI** : `render_template_string(f"...{user_input}...")` est aussi dangereux que `eval()`. Les templates doivent être statiques ; les données passées en arguments séparés.
+> - **ReDoS** : tester les regex appliquées à des entrées utilisateur avec des inputs conçus pour déclencher le backtracking. Une limite de taille d'input est le filet de sécurité minimal.
+
 ---
 
 ## Module 2.4 - Authentification sécurisée (45 min)
 
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Classer les algorithmes de hashage de mots de passe du moins au plus sécurisé et justifier le choix d'Argon2
+> - Implémenter une authentification complète en Python : hash, vérification, lockout progressif, rehash transparent
+> - Concevoir un flux de réinitialisation de mot de passe sécurisé (token à usage unique, haché, expirant)
+> - Configurer TOTP avec pyotp pour une authentification à deux facteurs
+> - Appliquer les recommandations NIST SP 800-63B sur la politique de mots de passe
+
 ### 2.4.1 Stockage des mots de passe
+
+**Pourquoi les mots de passe doivent-ils être hashés, et pourquoi tous les hashs ne se valent pas ?**
+
+Un mot de passe ne doit jamais être stocké en clair : si la base de données est compromise (dump SQL, accès physique, backup mal protégé), les mots de passe doivent rester inutilisables par l'attaquant. Le hashage transforme un mot de passe en empreinte non réversible.
+
+Cependant, tous les algorithmes de hashage ne se valent pas pour cet usage :
+- Les hash **rapides** (MD5, SHA-256) permettent de tester des milliards de mots de passe par seconde sur GPU, rendant le brute force trivial même sur des hashs salés.
+- Les algorithmes dédiés (bcrypt, Argon2) sont **intentionnellement lents** et consomment de la mémoire, rendant les attaques massives prohibitives même avec du matériel spécialisé.
+
+Le choix de l'algorithme est une décision architecturale : utiliser MD5 ou SHA-256 pour stocker des mots de passe est une **faute de conception**, pas un compromis de performance acceptable.
 
 **Hiérarchie de mauvaises à bonnes pratiques** :
 
@@ -953,9 +1010,21 @@ def verify_mfa_setup():
 - **Ce que je possède** : smartphone (TOTP), clé de sécurité (FIDO2/WebAuthn)
 - **Ce que je suis** : empreinte digitale, reconnaissance faciale
 
+> **À retenir**
+> - **Argon2id** est le standard actuel (OWASP) : résistant aux attaques GPU/ASIC grâce à sa consommation mémoire. bcrypt (rounds ≥ 12) reste acceptable si Argon2 n'est pas disponible.
+> - MD5 et SHA-256 **ne sont pas des algorithmes de hashage de mots de passe** : leur vitesse est une qualité pour les checksums et un défaut fatal pour les mots de passe.
+> - La protection contre le brute force combine trois niveaux indépendants : algorithme lent + lockout progressif + rate limiting — un seul niveau est insuffisant.
+> - Le token de réinitialisation doit être haché en base (pas stocké en clair) : un dump de la table des tokens ne doit pas permettre de réinitialiser tous les comptes.
+
 ---
 
 ## Module 2.5 - Sessions, cookies et headers (30 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Configurer des cookies de session sécurisés (Secure, HttpOnly, SameSite, durée limitée)
+> - Implémenter la régénération de session à la connexion pour prévenir la fixation de session
+> - Configurer les headers de sécurité essentiels avec Flask-Talisman (HSTS, CSP, X-Frame-Options)
+> - Expliquer les risques liés à une mauvaise gestion de session : fixation, hijacking, session éternelle
 
 ### 2.5.1 Configuration sessions sécurisées
 
@@ -1114,9 +1183,21 @@ def add_security_headers(response):
     return response
 ```
 
+> **À retenir**
+> - **Session côté serveur** (Redis, base de données) est préférable à la session en cookie : le serveur peut invalider n'importe quelle session à tout moment.
+> - La **régénération de session** à la connexion est obligatoire : sans elle, une session créée avant l'authentification reste valide après (fixation de session).
+> - Un logout doit invalider la session **côté serveur** : vider le cookie côté client sans invalider la session serveur ne protège pas contre le rejeu d'une session interceptée.
+> - Les cookies de session nécessitent les trois attributs simultanément : `HttpOnly` (pas accessible en JS), `Secure` (HTTPS uniquement), `SameSite=Strict` (protection CSRF).
+
 ---
 
 ## Module 2.6 - Protection anti-bot et rate limiting (25 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Configurer Flask-Limiter avec des seuils adaptés selon la sensibilité des endpoints
+> - Distinguer les quatre stratégies de comptage (fixed window, sliding window, token bucket, leaky bucket) et leurs compromis
+> - Intégrer reCAPTCHA v3 dans un formulaire et calibrer le seuil de score
+> - Identifier les endpoints nécessitant un rate limiting strict et justifier les seuils choisis
 
 ### 2.6.1 Rate Limiting avec Flask-Limiter
 
@@ -1294,9 +1375,21 @@ class AnomalyDetector:
         return 'allow'
 ```
 
+> **À retenir**
+> - Le rate limiting **par IP seule** est contournable (rotation d'IP, botnets) : combiner avec une clé par utilisateur authentifié pour les endpoints sensibles.
+> - Les endpoints à brute force critique (login, reset-password, register) nécessitent des seuils stricts : 5 tentatives par minute maximum.
+> - Le stockage du compteur en **Redis partagé** est obligatoire en architecture multi-instances : un compteur en mémoire locale ne s'applique qu'à une seule instance.
+> - Retourner l'en-tête `Retry-After` dans les réponses 429 pour éviter les boucles de retry immédiates côté client.
+
 ---
 
 ## Module 2.7 - Plan de sécurité applicative (20 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Décrire les quatre phases d'un SDLC sécurisé et nommer les outils associés à chaque phase
+> - Configurer un pipeline d'analyse statique avec Bandit et un hook pre-commit de détection de secrets
+> - Utiliser la checklist Security by Design pour auditer une application existante
+> - Distinguer SAST et DAST et expliquer pourquoi les deux sont nécessaires
 
 ### 2.7.1 SDLC sécurisé
 
@@ -1432,9 +1525,21 @@ repos:
 - [ ] Veille CVE active
 ```
 
+> **À retenir**
+> - La sécurité intégrée dès la conception coûte **10 à 100 fois moins cher** à corriger qu'une vulnérabilité découverte en production (règle NIST).
+> - **SAST** (Bandit, Semgrep) détecte les patterns dangereux dans le code source ; **DAST** (ZAP, Burp) teste l'application en cours d'exécution : les deux sont complémentaires.
+> - Les pre-commit hooks bloquent les secrets avant qu'ils entrent dans le dépôt Git — une fois poussés, ils sont compromis même après suppression (historique indexé).
+> - La checklist Security by Design est un outil de revue, pas de certification : cocher toutes les cases ne garantit pas l'absence de vulnérabilités.
+
 ---
 
 ## Module 2.8 - Référentiel OWASP API Security Top 10 (15 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Mettre en correspondance les catégories OWASP Web Top 10 et OWASP API Top 10
+> - Identifier les spécificités des APIs en matière de sécurité par rapport aux applications web traditionnelles
+> - Appliquer les protections contre BOLA, Excessive Data Exposure et Mass Assignment dans une API REST Flask
+> - Expliquer pourquoi une interface Swagger exposée sans authentification en production est un risque
 
 > Source : [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
 > Version de référence : **API Security Top 10 2019**, toujours largement utilisée dans la documentation et les formations.
@@ -1560,6 +1665,12 @@ Focalisé sur les API : appels massifs, patterns d'abus, anomalies de tokens.
 | — | API3 Excessive Data Exposure | Réponses JSON trop riches |
 | — | API4 Lack of Rate Limiting | DoS via endpoints peu coûteux |
 | — | API9 Improper Assets Mgmt | Shadow APIs, versions dépréciées |
+
+> **À retenir**
+> - Les APIs amplifient les risques des applications web : pas de session traditionnelle, des IDs directement dans les URLs, des réponses JSON souvent très complètes.
+> - **BOLA** (API1) est la vulnérabilité la plus fréquente en API : vérifier systématiquement la propriété ou le rôle avant de retourner tout objet.
+> - **Excessive Data Exposure** (API3) : ne jamais retourner le modèle complet — définir des DTOs explicites avec les champs strictement nécessaires.
+> - Une interface Swagger/OpenAPI exposée sans authentification en production est une cartographie complète de l'API offerte à l'attaquant.
 
 ---
 

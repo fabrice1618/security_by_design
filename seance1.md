@@ -4,6 +4,13 @@
 
 ## Module 1.1 - Fondamentaux de la sécurité (30 min)
 
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Expliquer la triade CIA et citer un exemple de violation pour chaque pilier
+> - Distinguer vulnérabilité, exploit et payload dans une chaîne d'attaque
+> - Lister les 6 principes *Security by Design* et illustrer chacun par un exemple concret
+> - Lire un score CVSS et positionner une vulnérabilité dans son cycle de vie
+> - Identifier les 10 catégories OWASP Top 10 et les rattacher aux modules de cette formation
+
 ### 1.1.1 La triade CIA
 
 La sécurité de l'information repose sur trois piliers fondamentaux :
@@ -163,9 +170,21 @@ L'**OWASP Top 10** (Open Worldwide Application Security Project) est la liste de
 
 > Les catégories A04, A06, A07, A08, A09 sont traitées en détail en séance 2.
 
+> **À retenir**
+> - La triade CIA est indivisible : compromettre un seul pilier suffit à déséquilibrer la sécurité d'un système.
+> - **Surface d'attaque réduite = risque réduit** : éviter d'exposer ce qui n'est pas nécessaire est plus efficace que de multiplier les contrôles sur des points d'entrée inutiles.
+> - Un score CVSS ≥ 7,0 signale une gravité élevée ou critique — traiter en priorité, délai de patch court.
+> - L'OWASP Top 10 classe des **risques** (familles de failles), pas des vulnérabilités individuelles : une catégorie peut regrouper des dizaines d'implémentations différentes.
+
 ---
 
 ## Module 1.2 - RGPD pour développeurs (20 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Nommer les principes RGPD qui s'appliquent directement au code (minimisation, privacy by design, durée de conservation)
+> - Traduire les articles 17 et 20 du RGPD en méthodes concrètes dans un modèle de données Python
+> - Identifier les données personnelles collectées par une application et évaluer les risques associés
+> - Décrire la procédure de notification CNIL et les délais imposés en cas de violation de données
 
 ### 1.2.1 Principes fondamentaux
 
@@ -264,9 +283,20 @@ graph TD
 | Clés et secrets | Compromission totale du système | Variables d'environnement, HSM/KMS, rotation régulière, jamais en dépôt Git |
 | Données sensibles (santé, biométrie) | RGPD Art. 9, amendes maximales | Chiffrement des colonnes, ABAC strict, journalisation exhaustive |
 
+> **À retenir**
+> - **Privacy by Design** : la protection des données se code dès la conception, pas en ajout tardif.
+> - **Minimisation** : ne stocker que ce qui est strictement nécessaire — un champ de moins est un risque de moins.
+> - En cas de violation, la notification CNIL est obligatoire **sous 72 h** si le risque pour les droits des personnes est avéré.
+> - Les amendes RGPD (jusqu'à 4 % du CA mondial) s'appliquent à l'entreprise qui déploie l'application, pas uniquement à son prestataire.
+
 ---
 
 ## Module 1.3 - Mise en place de l'environnement (30 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Lancer VulnPyApp en local et vérifier que l'application fonctionne correctement
+> - Écrire un script Python qui crawle automatiquement une application et liste ses endpoints et formulaires
+> - Identifier les points d'entrée critiques d'une application à partir de sa cartographie
 
 ### 1.3.1 Installation de l'application vulnérable
 
@@ -397,9 +427,21 @@ if __name__ == '__main__':
     mapper.report()
 ```
 
+> **À retenir**
+> - La cartographie automatique (crawling + analyse des formulaires) est le premier réflexe d'un audit : elle révèle l'étendue réelle de la surface d'attaque.
+> - Chaque formulaire, paramètre d'URL et en-tête HTTP est un point d'entrée potentiel : les recenser exhaustivement avant de tester.
+> - Les endpoints `/api/*` et les formulaires POST méritent une attention particulière car ils modifient l'état du système.
+
 ---
 
 ## Module 1.4 - Injections SQL (50 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Expliquer pourquoi la concaténation de chaînes est la cause fondamentale des injections SQL
+> - Distinguer les trois familles d'injections SQL (in-band, blind, out-of-band) et choisir la technique adaptée selon la réponse de l'application
+> - Construire manuellement un payload de bypass d'authentification et un payload UNION
+> - Corriger une injection SQL avec des requêtes paramétrées (sqlite3 natif ou ORM SQLAlchemy)
+> - Ajouter une validation d'entrée avec Pydantic comme défense en profondeur
 
 ### 1.4.1 Principe fondamental
 
@@ -585,6 +627,8 @@ sqlmap -u "http://localhost:5000/search?q=test" --dbs
 sqlmap -u "http://localhost:5000/search?q=test" -D main -T users --dump
 ```
 
+La facilité d'automatisation de SQLMap illustre à quel point les injections SQL sont exploitables rapidement : en quelques secondes, la totalité d'une base de données peut être extraite sans aucune connaissance particulière. La correction est heureusement tout aussi simple à mettre en œuvre.
+
 ### 1.4.5 Correction : requêtes paramétrées
 
 **Méthode 1 : sqlite3 avec placeholders**
@@ -676,9 +720,22 @@ def login():
     ...
 ```
 
+> **À retenir**
+> - La cause fondamentale de l'injection SQL est la **concaténation** de données contrôlées par l'utilisateur dans une requête : la correction est de les **séparer** via des paramètres liés.
+> - L'ORM (SQLAlchemy) protège automatiquement — mais une requête brute avec `execute()` et f-string reste vulnérable même dans un projet ORM.
+> - Si l'application retourne des résultats visibles : injection UNION. Si la réponse est opaque : blind (boolean ou time-based). Ce choix de technique conditionne l'outillage.
+> - La validation d'entrée (Pydantic) est une **défense en profondeur**, pas un substitut aux requêtes paramétrées.
+
 ---
 
 ## Module 1.5 - Cross-Site Scripting / XSS (50 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Distinguer les trois types de XSS (reflected, stored, DOM-based) et identifier lequel s'applique à un contexte donné
+> - Décrire l'impact concret d'un XSS : vol de cookie de session, keylogging, phishing ciblé
+> - Construire un payload XSS de vol de cookie et expliquer son vecteur de diffusion
+> - Corriger un XSS dans Flask/Jinja2 avec l'échappement automatique, `markupsafe.escape` ou Bleach
+> - Appliquer l'échappement contextuel selon le contexte de sortie (HTML, JavaScript, URL)
 
 ### 1.5.1 Principe et types
 
@@ -811,6 +868,8 @@ filters_bypass = [
 ]
 ```
 
+Les exemples précédents montrent que le XSS peut servir à des fins très variées — vol de session, surveillance passive, phishing. Les protections qui suivent s'appliquent à tous les types : la règle fondamentale est d'**échapper les données selon le contexte de sortie** (HTML, JavaScript, URL), jamais de façon générique.
+
 ### 1.5.3 Protection en Python/Flask
 
 **Méthode 1 : Échappement automatique avec Jinja2**
@@ -895,9 +954,21 @@ def profile():
                           url_user=url_safe)
 ```
 
+> **À retenir**
+> - **Règle d'or** : ne jamais injecter de données utilisateur directement dans du HTML, du JavaScript ou une URL — toujours échapper selon le contexte de sortie.
+> - `{{ var }}` dans Jinja2 est sûr par défaut. `{{ var | safe }}` est dangereux : n'utiliser que pour du contenu généré ou validé par votre propre code.
+> - Le XSS stocké est le plus grave : un seul payload compromet **tous les visiteurs** de la page, y compris les administrateurs.
+> - CSP est la défense en profondeur côté navigateur : elle ne remplace pas l'échappement côté serveur, mais réduit l'impact des XSS résiduels.
+
 ---
 
 ## Module 1.6 - Protections navigateur (30 min)
+
+> **Objectifs** — À l'issue de ce module, vous serez capables de :
+> - Déterminer si deux URLs partagent la même origine et en déduire les restrictions SOP applicables
+> - Configurer CORS de façon restrictive avec Flask-CORS pour une API
+> - Rédiger une politique CSP minimale et l'appliquer progressivement via Flask-Talisman
+> - Articuler les rôles complémentaires de SOP, CORS, CSP et HSTS dans la chaîne de protection
 
 ### 1.6.1 Same-Origin Policy (SOP)
 
@@ -1038,6 +1109,12 @@ sequenceDiagram
     S-->>N: 200 + Access-Control-Allow-Origin: https://app.com
     N->>N: Réponse acceptée, JS peut lire les données
 ```
+
+> **À retenir**
+> - **SOP** isole les origines par défaut ; **CORS** ouvre des exceptions contrôlées ; **CSP** filtre les sources de contenu.
+> - `Access-Control-Allow-Origin: *` combiné à `Access-Control-Allow-Credentials: true` est **interdit** : cette combinaison annule toute protection CSRF basée sur l'origine.
+> - Déployer CSP en mode `Report-Only` d'abord pour observer les violations sans bloquer de trafic légitime, puis passer en mode bloquant une fois la politique stabilisée.
+> - Ces quatre mécanismes sont complémentaires et non substituables : SOP (isolation) → CORS (exception contrôlée) → CSP (whitelist contenu) → HSTS (force TLS).
 
 ---
 
