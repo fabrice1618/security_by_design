@@ -284,16 +284,24 @@ def update_user(user_id):
 
 ```mermaid
 graph TD
-    subgraph Vulnérable
+    subgraph Vulnérable["🚨 Accès VULNÉRABLE"]
         V1["GET /api/orders/5"] --> V2["Order.query.get(5)"]
         V2 --> V3["Retourne la commande<br/>sans vérifier le propriétaire"]
     end
-    subgraph Sécurisé
+    
+    space1[" "]
+    
+    subgraph Sécurisé["✅ Accès SÉCURISÉ"]
         S1["GET /api/orders/5"] --> S2["Order.query.filter_by<br/>id=5, user_id=current_user.id"]
         S2 --> S3{"user_id correspond?"}
         S3 -->|Oui| S4["Retourne la commande"]
         S3 -->|Non| S5["403 Accès interdit"]
     end
+    
+    Vulnérable --> space1
+    space1 --> Sécurisé
+    
+    style space1 fill:none,stroke:none
 ```
 
 ### 2.2.3 Exploitation

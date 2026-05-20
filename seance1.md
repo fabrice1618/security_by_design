@@ -783,28 +783,37 @@ document.getElementById('welcome').innerHTML = 'Bonjour ' + params.get('name');
 // /page?name=<img src=x onerror=alert(1)>
 ```
 
-**Différence entre les trois types** : le XSS reflété est non persistant (transmis via un lien), le XSS stocké persiste en base de données et touche tous les visiteurs, le XSS DOM-based ne quitte jamais le navigateur (manipulation du DOM local).
+**Différence entre les trois types** :
+- **XSS reflété** : non persistant (transmis via un lien)
+- **XSS stocké** : persiste en base de données et touche tous les visiteurs
+- **XSS DOM-based** : ne quitte jamais le navigateur (manipulation du DOM local)
 
 ```mermaid
-graph TD
-    subgraph Reflected
-        A1[Attaquant envoie un lien piégé] --> A2[Victime clique]
-        A2 --> A3[Payload dans l'URL]
-        A3 --> A4[Reflété dans la réponse HTML]
+graph LR
+    subgraph Reflected["XSS Reflété"]
+        A1["Attaquant<br/>envoie un lien piégé"] --> A2["Victime<br/>clique"]
+        A2 --> A3["Payload<br/>dans l'URL"]
+        A3 --> A4["Reflété dans<br/>la réponse HTML"]
         A4 --> A5["Script exécuté<br/>Victime unique"]
     end
-    subgraph Stored
-        B1[Attaquant poste un commentaire] --> B2[Payload stocké en BDD]
-        B2 --> B3[Chaque visiteur charge la page]
-        B3 --> B4[Payload chargé depuis la BDD]
+    
+    subgraph Stored["XSS Stocké"]
+        B1["Attaquant<br/>poste un commentaire"] --> B2["Payload stocké<br/>en BDD"]
+        B2 --> B3["Chaque visiteur<br/>charge la page"]
+        B3 --> B4["Payload chargé<br/>depuis la BDD"]
         B4 --> B5["Script exécuté<br/>Tous les visiteurs"]
     end
-    subgraph DOM-based
-        C1[URL avec paramètre/fragment] --> C2[Page statique chargée]
-        C2 --> C3[JS lit location.hash / paramètre]
-        C3 --> C4[innerHTML injecte le code]
+    
+    subgraph DOMbased["XSS DOM-based"]
+        C1["URL avec<br/>paramètre/fragment"] --> C2["Page statique<br/>chargée"]
+        C2 --> C3["JS lit<br/>location.hash"]
+        C3 --> C4["innerHTML<br/>injecte le code"]
         C4 --> C5["Script exécuté<br/>Côté client uniquement"]
     end
+    
+    style Reflected fill:#fff3cd,stroke:#ff6b6b
+    style Stored fill:#f8d7da,stroke:#ff6b6b
+    style DOMbased fill:#d1ecf1,stroke:#17a2b8
 ```
 
 ### 1.5.2 Exploitation pratique
