@@ -669,12 +669,12 @@ def register():
 **Méthode 2 : Schéma Marshmallow (robuste) — vulnpyapp_remediated/schemas.py**
 ```python
 # ✅ schemas.py
-from marshmallow import Schema, fields, validate, EXCLUDE
+from marshmallow import Schema, fields, validate, RAISE
 
 class RegisterSchema(Schema):
     """Allowlist stricte : is_admin n'est PAS exposé"""
     class Meta:
-        unknown = EXCLUDE  # ✅ Ignore tout champ non déclaré
+        unknown = RAISE  # ✅ Rejette tout champ non déclaré
 
     email = fields.Email(required=True, validate=validate.Length(max=120))
     username = fields.String(
@@ -687,31 +687,27 @@ class RegisterSchema(Schema):
     )
     password = fields.String(
         required=True,
-        validate=[
-            validate.Length(min=8, max=128),
-            validate.Regexp(
-                r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).+$',
-                error="Password must contain uppercase, lowercase and digit"
-            )
-        ],
+        validate=validate.Length(min=8, max=128),
         load_only=True
     )
     bio = fields.String(load_default='', validate=validate.Length(max=500))
+    csrf_token = fields.String(load_only=True, load_default='')
 
-    # ✅ is_admin n'apparaît pas → automatiquement ignoré à la désérialisation
+    # ✅ is_admin n'apparaît pas → automatiquement rejeté à la désérialisation
 
 
 class ProfileUpdateSchema(Schema):
     """Mise à jour de profil : seuls username et bio modifiables"""
     class Meta:
-        unknown = EXCLUDE
+        unknown = RAISE
 
     username = fields.String(validate=[
         validate.Length(min=3, max=80),
         validate.Regexp(r'^[a-zA-Z0-9_-]+$')
     ])
     bio = fields.String(validate=validate.Length(max=500))
-    # email et is_admin absents → ignorés même s'ils sont envoyés
+    csrf_token = fields.String(load_only=True, load_default='')
+    # email et is_admin absents → rejetés même s'ils sont envoyés
 ```
 
 ```python
@@ -1382,21 +1378,23 @@ def init_security(app):
     """Initialise les headers de sécurité via Flask-Talisman"""
     talisman.init_app(
         app,
-        force_https=True,
+        force_https=False,  # True en production réelle
         strict_transport_security=True,
         strict_transport_security_max_age=31536000,  # 1 an
         content_security_policy={
             'default-src': "'self'",
-            'script-src': ["'self'", "'unsafe-inline'"],  # À affiner selon le projet
+            'script-src': ["'self'", "'nonce-{nonce}'"],
             'style-src': ["'self'", "'unsafe-inline'"],
             'img-src': "'self'",
             'font-src': "'self'",
         },
         content_security_policy_nonce_in=['script-src'],
-        referrer_policy='strict-origin-when-cross-origin',
-        x_frame_options='SAMEORIGIN',
-        x_content_type_options='nosniff',
-        x_xss_protection='1; mode=block',
+        referrer_policy='no-referrer',
+        frame_options='DENY',
+        x_content_type_options=True,
+        session_cookie_secure=app.config['SESSION_COOKIE_SECURE'],
+        session_cookie_http_only=app.config['SESSION_COOKIE_HTTPONLY'],
+        session_cookie_samesite=app.config['SESSION_COOKIE_SAMESITE'],
     )
 ```
 
@@ -1439,7 +1437,6 @@ def create_app(config_name='production'):
 **Avant (vulnérable)** :
 ```
 HTTP/1.1 200 OK
-Server: Werkzeug/2.0
 Content-Type: text/html; charset=utf-8
 
 <!-- Aucun header de sécurité → attaquant sait le stack technologique -->
@@ -1448,13 +1445,11 @@ Content-Type: text/html; charset=utf-8
 **Après (sécurisé)** :
 ```
 HTTP/1.1 200 OK
-Server: Werkzeug/2.0
 Strict-Transport-Security: max-age=31536000; includeSubDomains
-Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'
-X-Frame-Options: SAMEORIGIN
+Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-...'
+X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
-X-XSS-Protection: 1; mode=block
-Referrer-Policy: strict-origin-when-cross-origin
+Referrer-Policy: no-referrer
 
 <!-- Navigateur applique les restrictions : MITM, clickjacking, sniffing bloqués -->
 ```
@@ -1467,8 +1462,8 @@ Referrer-Policy: strict-origin-when-cross-origin
 | X-Frame-Options | Bloque clickjacking | `SAMEORIGIN` ou `DENY` |
 | X-Content-Type-Options | Prévient MIME sniffing | `nosniff` |
 | CSP | Bloque les scripts injectés | `default-src 'self'` (puis affiner) |
-| X-XSS-Protection | Désactive XSS filter dangereux | `1; mode=block` ou `;` |
-| Referrer-Policy | Limite l'info de referrer | `strict-origin-when-cross-origin` |
+| X-XSS-Protection | Obsolète ; ne remplace pas CSP | Ne pas envoyer (ou `0` pour legacy) |
+| Referrer-Policy | Limite le referrer | `no-referrer` (ou `strict-origin-when-cross-origin` si besoin métier) |
 
 ### Vérification
 

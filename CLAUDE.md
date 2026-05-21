@@ -68,7 +68,7 @@ pytest tests/test_security.py::TestSQLInjection::test_sqli_login_bypass_blocked 
 
 # Audit statique / dépendances (CI exécute ces étapes via .github/workflows/security.yml)
 bandit -r . -x ./tests --severity-level medium --confidence-level medium
-safety check
+safety check -r requirements.txt  # Safety 2.x épinglé ; Safety 3.x : safety scan
 ```
 
 ### Exploits pédagogiques

@@ -14,12 +14,12 @@ en appliquant les principes Security By Design.
 | 5 | XSS DOM | `textContent` au lieu de `innerHTML` | CWE-79 |
 | 6 | CSRF | Flask-WTF CSRFProtect (token global) | CWE-352 |
 | 7 | IDOR | Filtrage par `current_user.id` + 403 | CWE-639 |
-| 8 | Mass Assignment | Schémas Marshmallow avec allowlist | CWE-915 |
+| 8 | Mass Assignment | Schémas Marshmallow allowlist + rejet des champs inconnus | CWE-915 |
 | 9 | SSTI | Suppression du `Template()` dynamique | CWE-1336 |
 | 10 | Path Traversal | `werkzeug.secure_filename` + `os.path.realpath` | CWE-22 |
 | 11 | Command Injection | `subprocess.run([...], shell=False)` + validation | CWE-78 |
 | 12 | MD5 | bcrypt (cost 12) | CWE-327 |
-| 13 | Cookies | `Secure`, `HttpOnly`, `SameSite=Strict` | CWE-614 |
+| 13 | Cookies | `HttpOnly`, `SameSite=Strict`, `Secure` en production HTTPS | CWE-614 |
 | 14 | Rate limiting | Flask-Limiter sur `/login` (5/min) | CWE-307 |
 | 15 | Headers | CSP, HSTS, X-Frame-Options, etc. | CWE-693 |
 | - | Debug endpoint | Supprimé | CWE-489 |
@@ -32,6 +32,6 @@ en appliquant les principes Security By Design.
 - ✅ **Least Privilege** : utilisateur Docker non-root, rôles vérifiés
 - ✅ **Fail Securely** : try/except + redirection vers pages d'erreur
 - ✅ **Secure Defaults** : config par défaut sécurisée
-- ✅ **Input Validation** : schémas Marshmallow sur toutes les entrées
+- ✅ **Input Validation** : schémas Marshmallow allowlist avec rejet des champs inconnus
 - ✅ **Output Encoding** : Jinja2 autoescape activé partout
 - ✅ **Separation of Concerns** : security.py, schemas.py isolés

@@ -139,7 +139,7 @@ Détail complet dans `seance1.md`, `seance2.md` et `seance3.md`.
 ```bash
 cd vulnpyapp_remediated
 bandit -r . -x ./tests --severity-level medium --confidence-level medium
-safety check
+safety check -r requirements.txt  # Safety 2.x épinglé ; Safety 3.x : safety scan
 ```
 
 ## Licence

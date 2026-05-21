@@ -1,5 +1,5 @@
 """
-VulnPyApp v2.0 - branche `remediated`
+VulnPyApp v2.0 - application remédiée
 Toutes les vulnérabilités de la v1.0 ont été corrigées.
 """
 import os
@@ -54,6 +54,8 @@ def create_app(config_name='default'):
         strict_transport_security_max_age=31536000,
         strict_transport_security_include_subdomains=True,
         session_cookie_secure=app.config['SESSION_COOKIE_SECURE'],
+        session_cookie_http_only=app.config['SESSION_COOKIE_HTTPONLY'],
+        session_cookie_samesite=app.config['SESSION_COOKIE_SAMESITE'],
         referrer_policy='no-referrer',
         frame_options='DENY',
         x_content_type_options=True,

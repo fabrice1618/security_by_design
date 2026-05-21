@@ -90,7 +90,7 @@ Exécuter les outils de sécurité et documenter les résultats :
 ```bash
 # Dans le dossier app_vulnerable/
 bandit -r . -x ./tests --severity-level medium --confidence-level medium
-safety check --json
+safety check --json  # Safety 2.x ; Safety 3.x : safety scan
 ```
 
 **Livrable A1 :**
@@ -217,11 +217,11 @@ class TestXSS:
         assert '<script>' not in response.data.decode()
         assert '&lt;script&gt;' in response.data.decode()
 
-class TestICAD:
+class TestIDOR:
     def test_idor_users_api_blocked(self, client, auth_user):
         """Vérifier que IDOR est bloqué : un user ne peut pas accéder aux données d'un autre"""
         # Connexion comme user_id=2
-        client.post('/login', data={'email': 'alice@example.com', 'password': 'Alice123!'})
+        client.post('/login', data={'email': 'alice@vulnpyapp.local', 'password': 'Alice123!'})
         
         # Tentative d'accès aux données du user_id=1
         response = client.get('/api/users/1')
@@ -262,7 +262,7 @@ L'audit a identifié **N vulnérabilités**, dont **X critiques**, **Y élevées
 
 **Outils utilisés :**
 - Bandit (scan statique Python)
-- Safety (audit dépendances)
+- Safety 2.x ou Safety 3.x (`safety scan`) / pip-audit (audit dépendances)
 - Analyse manuelle du code (16 heures)
 - Tests d'exploitation sur app vulnérable
 
@@ -394,7 +394,6 @@ Démonstration vidéo (5 min)          | +3     | Exploit → Remédiation, comm
 
 ### Documentation
 
-- [Flask Security](https://flask.palletsprojects.com/en/2.3.x/security/)
 - [Flask Security](https://flask.palletsprojects.com/en/2.3.x/security/)
 - [OWASP Cheat Sheets](https://cheatsheetseries.owasp.org/)
 - [CWE/CVSS](https://cwe.mitre.org/)

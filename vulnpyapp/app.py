@@ -72,6 +72,9 @@ def register():
     if request.method == 'POST':
         # 🚨 VULNÉRABLE : tous les champs du formulaire passent
         data = request.form.to_dict()
+        if 'is_admin' in data:
+            # Conversion naive qui rend l'escalade de privileges exploitable.
+            data['is_admin'] = data['is_admin'].lower() in ('1', 'true', 'yes', 'on')
 
         user = User(**{k: v for k, v in data.items() if k != 'password'})
         user.set_password(data.get('password', ''))

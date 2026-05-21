@@ -1,5 +1,5 @@
 """
-Tests de sécurité - branche remediated
+Tests de sécurité - application remédiée v2.0
 Tous ces tests doivent passer (✅) sur la v2.0 sécurisée.
 """
 import pytest
@@ -89,7 +89,8 @@ class TestXSS:
         """SSTI via paramètre name doit être bloquée"""
         r = client.get('/hello?name={{ 7*7 }}')
         assert b'49' not in r.data
-        assert b'{{ 7*7 }}' not in r.data
+        # L'expression peut etre affichee litteralement, mais jamais evaluee.
+        assert b'{{ 7*7 }}' in r.data
 
     def test_hello_xss_escaped(self, client):
         """XSS dans /hello doit être échappé"""
@@ -113,11 +114,16 @@ class TestCSRF:
         r = client.get('/register')
         assert b'csrf_token' in r.data
 
-    def test_profile_update_without_csrf_rejected(self, auth_client):
+    def test_profile_update_without_csrf_rejected(self, app, auth_client):
         """Mise à jour de profil sans token CSRF doit être rejetée"""
-        # WTF_CSRF_ENABLED=False en test donc on vérifie la présence du champ
-        r = auth_client.get('/profile')
-        assert b'csrf_token' in r.data
+        # Les autres tests desactivent CSRF pour eviter d'alourdir chaque POST.
+        # Ici on le reactive explicitement pour verifier le controle reel.
+        app.config['WTF_CSRF_ENABLED'] = True
+        r = auth_client.post('/profile/update', data={
+            'username': 'alice2',
+            'bio': 'updated without token'
+        })
+        assert r.status_code == 400
 
 
 # ============================================================
@@ -181,8 +187,8 @@ class TestIDOR:
 class TestMassAssignment:
 
     def test_is_admin_not_settable_via_register(self, client, app):
-        """Le champ is_admin doit être ignoré à l'inscription"""
-        client.post('/register', data={
+        """Le champ is_admin doit être rejeté à l'inscription"""
+        r = client.post('/register', data={
             'email': 'hacker@test.local',
             'username': 'hacker',
             'password': 'Hack123!',
@@ -190,12 +196,11 @@ class TestMassAssignment:
             'is_admin[]': 'true',
             'is_admin[0]': '1'
         })
+        assert r.status_code == 400
 
         with app.app_context():
             hacker = User.query.filter_by(email='hacker@test.local').first()
-            assert hacker is not None
-            assert hacker.is_admin is False, \
-                "CRITICAL: is_admin was set to True via form - Mass Assignment vulnerability!"
+            assert hacker is None
 
     def test_profile_update_cannot_escalate_privilege(self, auth_client, app):
         """Mise à jour de profil ne peut pas changer is_admin"""
@@ -216,15 +221,17 @@ class TestMassAssignment:
 
 class TestSSTI:
 
-    def test_ssti_jinja_expression_not_evaluated(self, client):
+    def test_ssti_jinja_expression_not_evaluated(self, app, client):
         """Expression Jinja2 dans l'URL ne doit pas être évaluée"""
         r = client.get('/hello?name={{ config.SECRET_KEY }}')
         assert r.status_code == 200
-        assert b'SECRET_KEY' not in r.data
+        assert app.config['SECRET_KEY'].encode() not in r.data
+        assert b'{{ config.SECRET_KEY }}' in r.data
 
     def test_ssti_python_expression_blocked(self, client):
         r = client.get('/hello?name={{ [].__class__.__mro__ }}')
-        assert b'__mro__' not in r.data
+        assert b'__mro__' in r.data
+        assert b'<class' not in r.data
         assert b'object' not in r.data
 
 
@@ -326,15 +333,12 @@ class TestSecureCookies:
 
     def test_session_cookie_httponly(self, client):
         """Le cookie de session doit avoir le flag HttpOnly"""
-        client.post('/login', data={
+        r = client.post('/login', data={
             'email': 'alice@vulnpyapp.local',
             'password': 'Alice123!'
         })
-        for cookie in client.cookie_jar:
-            if 'session' in cookie.name.lower():
-                assert cookie.has_nonstandard_attr('HttpOnly') or \
-                       cookie._rest.get('HttpOnly') is not None or \
-                       True, "HttpOnly flag missing"
+        set_cookie = '\n'.join(r.headers.getlist('Set-Cookie'))
+        assert 'HttpOnly' in set_cookie
 
     def test_session_cookie_samesite(self, client):
         """Le cookie de session doit avoir SameSite=Strict"""

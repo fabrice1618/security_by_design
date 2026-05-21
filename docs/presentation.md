@@ -47,7 +47,7 @@ de la conception au déploiement
 
 <br>
 
-Master · 2 séances de 3h30 · Application support : **VulnPyApp**
+Master · 2 séances de 3h30 + projet · Application support : **VulnPyApp**
 
 ---
 
@@ -432,7 +432,7 @@ ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)
 hashed = ph.hash(password)
 ```
 
-**Politique** : ≥ 12 caractères, complexité, check HaveIBeenPwned, **timing constant** pour éviter l'énumération.
+**Politique** : longueur suffisante, blocage des mots de passe compromis, pas de règles de composition arbitraires, **timing constant** pour éviter l'énumération.
 
 ---
 
@@ -536,20 +536,20 @@ modeling     OWASP ASVS     Pentest    Secrets mgmt
 
 ---
 
-## OWASP API Security Top 10 (2019)
+## OWASP API Security Top 10 (2023)
 
 | Code | Catégorie | Module |
 |------|-----------|--------|
 | API1 | Broken Object Level Authorization (BOLA) | 2.2 IDOR |
-| API2 | Broken User Authentication | 2.4 Auth |
-| API3 | Excessive Data Exposure | 2.3 DTO |
-| API4 | Lack of Resources & Rate Limiting | 2.6 |
+| API2 | Broken Authentication | 2.4 Auth |
+| API3 | Broken Object Property Level Authorization | 2.3 DTO / Mass Assignment |
+| API4 | Unrestricted Resource Consumption | 2.7 Rate limiting |
 | API5 | Broken Function Level Authorization | 2.2 RBAC |
-| API6 | Mass Assignment | 2.3 |
-| API7 | Security Misconfiguration | 2.5 |
-| API8 | Injection | Séance 1 |
-| API9 | Improper Assets Management | 2.7 SDLC |
-| API10 | Insufficient Logging & Monitoring | 2.5 |
+| API6 | Unrestricted Access to Sensitive Business Flows | 2.7 Anti-abus |
+| API7 | Server Side Request Forgery | Checklist |
+| API8 | Security Misconfiguration | 2.6 Headers / CORS |
+| API9 | Improper Inventory Management | 2.8 SDLC |
+| API10 | Unsafe Consumption of APIs | 2.8 Supply chain |
 
 ---
 
@@ -624,7 +624,7 @@ Séance 1 · Séance 2 · Projet final
 |---|-----------|-----|
 | 1 | SQLi Login Bypass | 10 |
 | 2 | SQLi UNION (dump users + hashs) | 15 |
-| 3 | IDOR / Information Disclosure (`/api/users/<id>`) | 20 |
+| 3 | IDOR / Information Disclosure authentifiée (`/api/users/<id>`) | 20 |
 | 4 | XSS Réfléchie | 5 |
 | 5 | XSS Stockée (vol cookie + keylogger) | 10 |
 | — | **Corrections** (code + tests) | 40 |
@@ -700,7 +700,7 @@ Pénalités : retard −10 pts/jour, code copié sans compréhension −30 pts.
 ## Ressources
 
 - **OWASP Top 10 2021** — https://owasp.org/Top10/2021/
-- **OWASP API Security Top 10 2019** — https://owasp.org/www-project-api-security/
+- **OWASP API Security Top 10 2023** — https://owasp.org/www-project-api-security/
 - **OWASP Testing Guide v4.2** — méthodologie d'audit
 - **CWE** — https://cwe.mitre.org/
 - **PortSwigger Web Security Academy** — labs en ligne
@@ -722,4 +722,4 @@ Pénalités : retard −10 pts/jour, code copié sans compréhension −30 pts.
 
 <br>
 
-Code & supports : `vulnpyapp/`, `vulnpyapp_remediated/`, `docs/`, `seance1.md`, `seance2.md`
+Code & supports : `vulnpyapp/`, `vulnpyapp_remediated/`, `docs/`, `seance1.md`, `seance2.md`, `seance3.md`

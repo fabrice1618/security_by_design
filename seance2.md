@@ -226,8 +226,8 @@ def check_csrf_origin():
 
 > **À retenir**
 > - CSRF exploite la confiance implicite du serveur envers le navigateur : les cookies de session sont envoyés automatiquement, l'attaquant n'en a jamais besoin directement.
-> - `SameSite=Strict` sur le cookie de session est la défense la plus simple et robuste — dans la majorité des cas modernes, elle seule suffit.
-> - Le token CSRF doit être **lié à la session** et à **usage unique par formulaire** pour une protection maximale.
+> - `SameSite=Strict` réduit fortement le risque CSRF, mais reste une défense en profondeur : les actions sensibles doivent conserver un token CSRF côté serveur.
+> - Le token CSRF doit être **lié à la session** ; un token par formulaire ou par requête améliore encore la protection sur les actions très sensibles.
 > - Les requêtes `GET` ne doivent **jamais** produire d'effet de bord (écriture, suppression, modification) : CSRF devient alors inapplicable sur ces routes.
 
 ---
@@ -777,15 +777,11 @@ ph = PasswordHasher(
 )
 
 class PasswordPolicy:
-    """Politique de mots de passe forte (OWASP)"""
+    """Politique de mots de passe alignée NIST/OWASP"""
     MIN_LENGTH = 12
     MAX_LENGTH = 128
-    MIN_UPPERCASE = 1
-    MIN_LOWERCASE = 1
-    MIN_DIGITS = 1
-    MIN_SPECIAL = 1
 
-    # Top 10000 mots de passe les plus utilisés (à charger)
+    # Listes de mots de passe courants ou compromis (ex. HaveIBeenPwned, rockyou)
     COMMON_PASSWORDS = set()
 
     @classmethod
@@ -796,19 +792,10 @@ class PasswordPolicy:
             errors.append(f"Au moins {cls.MIN_LENGTH} caractères requis")
         if len(password) > cls.MAX_LENGTH:
             errors.append(f"Maximum {cls.MAX_LENGTH} caractères")
-        if sum(c.isupper() for c in password) < cls.MIN_UPPERCASE:
-            errors.append("Au moins une majuscule requise")
-        if sum(c.islower() for c in password) < cls.MIN_LOWERCASE:
-            errors.append("Au moins une minuscule requise")
-        if sum(c.isdigit() for c in password) < cls.MIN_DIGITS:
-            errors.append("Au moins un chiffre requis")
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            errors.append("Au moins un caractère spécial requis")
         if password.lower() in cls.COMMON_PASSWORDS:
-            errors.append("Ce mot de passe est trop courant")
+            errors.append("Ce mot de passe est trop courant ou compromis")
 
         return len(errors) == 0, errors
-
 
 class AuthService:
     @staticmethod
@@ -1452,8 +1439,12 @@ semgrep --config=auto ./app
 **SCA (Software Composition Analysis)** :
 
 ```bash
-# Safety - vulnérabilités dans dépendances
+# Safety 3.x - vulnérabilités dans dépendances
 pip install safety
+safety scan
+
+# Safety 2.x épinglé
+pip install "safety<3"
 safety check --json
 
 # pip-audit - audit officiel PyPA
@@ -1491,7 +1482,7 @@ repos:
 
 ### Authentification
 - [ ] Mots de passe hashés avec Argon2 (ou bcrypt rounds≥12)
-- [ ] Politique de mot de passe forte (≥12 chars, complexité)
+- [ ] Politique de mot de passe forte (longueur suffisante, blocage des mots de passe compromis, pas de composition arbitraire)
 - [ ] Vérification HaveIBeenPwned au signup
 - [ ] MFA disponible (TOTP) pour comptes sensibles
 - [ ] Protection brute force (rate limiting + lockout progressif)
@@ -1569,32 +1560,32 @@ repos:
 > **Objectifs** — À l'issue de ce module, vous serez capables de :
 > - Mettre en correspondance les catégories OWASP Web Top 10 et OWASP API Top 10
 > - Identifier les spécificités des APIs en matière de sécurité par rapport aux applications web traditionnelles
-> - Appliquer les protections contre BOLA, Excessive Data Exposure et Mass Assignment dans une API REST Flask
+> - Appliquer les protections contre BOLA, Broken Object Property Level Authorization et consommation excessive de ressources dans une API REST Flask
 > - Expliquer pourquoi une interface Swagger exposée sans authentification en production est un risque
 
 > Source : [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
-> Version de référence : **API Security Top 10 2019**, toujours largement utilisée dans la documentation et les formations.
+> Version de référence : **API Security Top 10 2023**.
 
-Les API exposent des fonctionnalités et des données de manière structurée mais très directe. Beaucoup de protections implicites des applications web traditionnelles (session, templating, UI) disparaissent, ce qui justifie une liste de risques spécifique.
+Les API exposent des fonctionnalités et des données de manière structurée mais très directe. Beaucoup de protections implicites des applications web traditionnelles (templating, navigation UI, parcours contrôlé) disparaissent, ce qui justifie une liste de risques spécifique.
 
-### 2.8.1 Vue d'ensemble
+### 2.9.1 Vue d'ensemble
 
 | Code | Catégorie | Lien avec cette séance |
 |------|-----------|------------------------|
-| **API1:2019** | Broken Object Level Authorization (BOLA / IDOR) | Module 2.2 (IDOR) |
-| **API2:2019** | Broken User Authentication | Module 2.4 (Auth, JWT, MFA) |
-| **API3:2019** | Excessive Data Exposure | Module 2.3 (DTO, serializers) |
-| **API4:2019** | Lack of Resources & Rate Limiting | Module 2.6 (Rate limiting) |
-| **API5:2019** | Broken Function Level Authorization | Module 2.2 (RBAC/ABAC) |
-| **API6:2019** | Mass Assignment | Module 2.3 (Mass Assignment) |
-| **API7:2019** | Security Misconfiguration | Module 2.5 (Headers, CORS) |
-| **API8:2019** | Injection | Séance 1 (rappel API-centric) |
-| **API9:2019** | Improper Assets Management | Module 2.7 (SDLC, versionning) |
-| **API10:2019** | Insufficient Logging & Monitoring | Module 2.5 / Checklist |
+| **API1:2023** | Broken Object Level Authorization (BOLA / IDOR) | Module 2.2 (IDOR) |
+| **API2:2023** | Broken Authentication | Module 2.4 (Auth, JWT, MFA) |
+| **API3:2023** | Broken Object Property Level Authorization | Module 2.3 (DTO, mass assignment) |
+| **API4:2023** | Unrestricted Resource Consumption | Module 2.7 (rate limiting, quotas) |
+| **API5:2023** | Broken Function Level Authorization | Module 2.2 (RBAC/ABAC) |
+| **API6:2023** | Unrestricted Access to Sensitive Business Flows | Module 2.7 (anti-abus, anti-bot) |
+| **API7:2023** | Server Side Request Forgery | Checklist / validation des URLs |
+| **API8:2023** | Security Misconfiguration | Module 2.6 (headers, CORS, debug) |
+| **API9:2023** | Improper Inventory Management | Module 2.8 (SDLC, versionning) |
+| **API10:2023** | Unsafe Consumption of APIs | Module 2.8 (supply chain, intégrations) |
 
-### 2.8.2 Détail des risques majeurs
+### 2.9.2 Détail des risques majeurs
 
-**API1:2019 – Broken Object Level Authorization (BOLA)**
+**API1:2023 – Broken Object Level Authorization (BOLA)**
 
 La vulnérabilité la plus fréquente en API : un utilisateur authentifié accède ou modifie des ressources qui ne lui appartiennent pas via des identifiants manipulables.
 
@@ -1608,99 +1599,67 @@ def get_order(order_id):
 @app.route('/api/orders/<int:order_id>')
 @login_required
 def get_order(order_id):
-    order = Order.query.get_or_404(order_id)
-    if order.user_id != current_user.id and not current_user.is_admin:
-        abort(403)
+    order = Order.query.filter_by(id=order_id, user_id=current_user.id).first_or_404()
     return jsonify(order.to_dict())
 ```
 
-**Mesures** : vérifier systématiquement, pour chaque requête, que l'objet appartient à l'appelant ou est autorisé par son rôle. Tests automatisés BOLA (essayer d'accéder aux ressources d'autres utilisateurs).
+**Mesures** : vérifier systématiquement, pour chaque requête, que l'objet appartient à l'appelant ou est autorisé par son rôle. Tester les accès horizontaux avec des comptes distincts.
 
-**API3:2019 – Excessive Data Exposure**
+**API3:2023 – Broken Object Property Level Authorization**
 
-L'API renvoie trop de données, en comptant sur le front-end pour masquer ce qui ne doit pas être affiché.
+Cette catégorie regroupe les anciens risques **Excessive Data Exposure** et **Mass Assignment** : l'API expose trop de propriétés ou accepte des propriétés qui ne devraient pas être modifiables.
 
 ```python
-# 🚨 VULNÉRABLE - to_dict() expose tout, y compris password_hash et is_admin
+# 🚨 VULNÉRABLE - expose et accepte trop de champs
 return jsonify(user.to_dict())
-
-# ✅ SÉCURISÉ - DTO explicite
-def user_public_dto(user):
-    return {
-        'id': user.public_id,
-        'username': user.username,
-        'avatar_url': user.avatar_url
-    }
-return jsonify(user_public_dto(user))
-```
-
-**Mesures** : filtrer côté serveur, DTO (Data Transfer Objects) ou serializers explicitant les champs exposés, revue systématique des réponses.
-
-**API4:2019 – Lack of Resources & Rate Limiting**
-
-L'API ne contrôle pas le volume de requêtes ni la taille des ressources, permettant DoS, extraction massive, brute force.
-
-**Mesures** :
-- Rate limiting (par IP, token, utilisateur), quotas — voir Module 2.6
-- Pagination obligatoire pour les listes
-- Limites de taille pour les payloads et les fichiers uploadés
-- Timeouts serveur raisonnables
-
-**API6:2019 – Mass Assignment**
-
-L'API mappe directement le JSON reçu sur un modèle interne sans restreindre les champs modifiables — voir Module 2.3.
-
-```python
-# 🚨 VULNÉRABLE - PATCH /api/users/me avec {"is_admin": true}
 for key, value in request.json.items():
     setattr(user, key, value)
 
-# ✅ SÉCURISÉ - whitelist explicite
-ALLOWED = {'username', 'bio', 'avatar_url'}
-for key, value in request.json.items():
-    if key in ALLOWED:
-        setattr(user, key, value)
+# ✅ SÉCURISÉ - DTO + allowlist explicites
+PUBLIC_USER_FIELDS = {'id', 'username', 'bio'}
+WRITABLE_USER_FIELDS = {'username', 'bio'}
 ```
 
-**API7:2019 – Security Misconfiguration (spécificités API)**
-- CORS permissif (`Access-Control-Allow-Origin: *` avec `Allow-Credentials: true`)
+**Mesures** : DTO explicites, schémas de validation avec champs inconnus rejetés, tests vérifiant que `email`, `password_hash`, `is_admin` ou `role` ne sortent pas ou ne sont pas modifiables.
+
+**API4:2023 – Unrestricted Resource Consumption**
+
+L'API ne contrôle pas le volume de requêtes ni la taille des ressources, permettant DoS, extraction massive, brute force ou coûts cloud excessifs.
+
+**Mesures** : rate limiting par IP et par compte, pagination obligatoire, limites de taille, timeouts, quotas par client API.
+
+**API8:2023 – Security Misconfiguration**
+- CORS permissif (`Access-Control-Allow-Origin: *` avec credentials)
 - Interface Swagger ouverte avec toutes les opérations de prod, sans auth
 - Messages d'erreur internes détaillés renvoyés au client
-- **Mesures** : CORS strict, protection des interfaces de documentation, désactivation de debug en production
+- Debug activé en environnement exposé
 
-**API9:2019 – Improper Assets Management**
+**API9:2023 – Improper Inventory Management**
 
-Mauvaise gestion du cycle de vie des versions : endpoints oubliés, non documentés ou dépréciés restent accessibles.
+Endpoints oubliés, non documentés ou dépréciés restent accessibles : anciennes versions `/v1`, endpoints internes, routes de debug, shadow APIs.
 
-- Ancienne version `/v1` toujours exposée et non maintenue, avec failles connues
-- Endpoints internes ou de test laissés déployés en prod
-- **Mesures** : catalogue complet des APIs (documentation, versions, propriétaires), stratégie de versionning, scans pour découvrir les *shadow APIs*
+**API10:2023 – Unsafe Consumption of APIs**
 
-**API10:2019 – Insufficient Logging & Monitoring**
+Une API consomme des services tiers sans validation suffisante : confiance excessive dans les données reçues, absence de timeout, redirections suivies aveuglément, transport non chiffré.
 
-Focalisé sur les API : appels massifs, patterns d'abus, anomalies de tokens.
-- Journalisation contextualisée : identifiant API client, user_id, IP, endpoint, statut
-- Centralisation, dashboards API, alertes sur patterns anormaux
-- Corrélation avec les logs d'authentification, WAF, reverse proxy
+### 2.9.3 Correspondance Web ↔ API
 
-### 2.8.3 Correspondance Web ↔ API
-
-| OWASP Web Top 10 (2021) | OWASP API Top 10 (2019) | Spécificité API |
+| OWASP Web Top 10 (2021) | OWASP API Top 10 (2023) | Spécificité API |
 |-------------------------|--------------------------|------------------|
 | A01 - Broken Access Control | API1 BOLA + API5 Function Level | IDs manipulables, endpoints granulaires |
-| A02 - Cryptographic Failures | API2 Broken Authentication | JWT, tokens, OAuth |
-| A03 - Injection | API8 Injection | Filtres et tris depuis paramètres JSON |
-| A04 - Insecure Design | API6 Mass Assignment | Binding direct JSON ↔ modèle |
-| A05 - Security Misconfig | API7 Security Misconfig | CORS, Swagger exposé |
-| A09 - Logging Failures | API10 Insufficient Logging | Patterns d'abus de tokens |
-| — | API3 Excessive Data Exposure | Réponses JSON trop riches |
-| — | API4 Lack of Rate Limiting | DoS via endpoints peu coûteux |
-| — | API9 Improper Assets Mgmt | Shadow APIs, versions dépréciées |
+| A02 - Cryptographic Failures | API2 Broken Authentication | JWT, tokens, OAuth, secrets API |
+| A03 - Injection | API8 Security Misconfiguration / API10 Unsafe Consumption | Paramètres JSON, filtres, intégrations tierces |
+| A04 - Insecure Design | API6 Sensitive Business Flows | Abus métier automatisés |
+| A05 - Security Misconfig | API8 Security Misconfiguration | CORS, Swagger exposé, debug |
+| A06 - Vulnerable Components | API10 Unsafe Consumption | Dépendances et APIs tierces |
+| A09 - Logging Failures | API9 Inventory + monitoring associé | Shadow APIs, appels massifs non détectés |
+| — | API3 Object Property Level Authorization | Réponses JSON trop riches, mass assignment |
+| — | API4 Unrestricted Resource Consumption | DoS et coûts via endpoints peu coûteux |
 
 > **À retenir**
-> - Les APIs amplifient les risques des applications web : pas de session traditionnelle, des IDs directement dans les URLs, des réponses JSON souvent très complètes.
-> - **BOLA** (API1) est la vulnérabilité la plus fréquente en API : vérifier systématiquement la propriété ou le rôle avant de retourner tout objet.
-> - **Excessive Data Exposure** (API3) : ne jamais retourner le modèle complet — définir des DTOs explicites avec les champs strictement nécessaires.
+> - Les APIs amplifient les risques d'autorisation : vérifier l'objet, la fonction appelée et les propriétés exposées ou modifiables.
+> - **BOLA** (API1) reste le risque central : filtrer par propriétaire ou politique d'autorisation côté serveur.
+> - **API3:2023** couvre à la fois l'exposition excessive de propriétés et le mass assignment.
 > - Une interface Swagger/OpenAPI exposée sans authentification en production est une cartographie complète de l'API offerte à l'attaquant.
 
 ---
@@ -2058,8 +2017,8 @@ Note : 9 vulnérabilités attendues
 # Installation
 pip install bandit
 
-# Analyse du projet (branche vulnérable)
-git checkout student-starter
+# Analyse du projet vulnérable
+cd vulnpyapp
 bandit -r . -x ./tests -f json -o bandit_report.json
 bandit -r . -x ./tests -f txt  -o bandit_report.txt
 
@@ -2102,8 +2061,11 @@ cat bandit_report.txt
 pip install safety
 
 # Analyse
+# Safety 2.x (version épinglée dans ce dépôt)
 safety check -r requirements.txt --json > safety_report.json
 safety check -r requirements.txt
+
+# Safety 3.x actuel : utiliser `safety scan` à la place de `safety check`
 
 # Alternative : pip-audit
 pip install pip-audit
@@ -2203,12 +2165,13 @@ Compléter le fichier `tests/test_security_student.py` :
 # tests/test_security_student.py
 """
 Tests de sécurité à compléter.
-Objectif : 100% des tests doivent ÉCHOUER sur la branche vulnérable
-           et PASSER sur la branche remediated.
+Objectif : les tests de blocage doivent échouer contre `vulnpyapp/`
+           et passer contre `vulnpyapp_remediated/`.
 """
 import pytest
 import re
-from app import create_app, db
+from app import create_app
+from extensions import db
 from models import User, Comment, Order
 
 
@@ -2246,7 +2209,7 @@ def alice_client(client):
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECTION 1 — SQL INJECTION (20 pts)
+# SECTION 1 — SQL INJECTION (10 pts)
 # ═══════════════════════════════════════════════════════════════
 
 class TestSQLInjection:
@@ -2279,10 +2242,10 @@ class TestSQLInjection:
         """
         TODO : Vérifier que l'injection UNION sur /search est bloquée.
         Le payload UNION SELECT ne doit pas retourner des données
-        de la table 'user' dans les résultats de recherche.
+        de la table 'users' dans les résultats de recherche.
         """
         # ─── À COMPLÉTER ───────────────────────────────────────
-        sqli_payload = "' UNION SELECT id,email,password_hash,4,5 FROM user--"
+        sqli_payload = "' UNION SELECT id,email,password_hash,4,5 FROM users--"
         response = ...
         data = response.get_data(as_text=True)
         # Vérifier qu'aucun email @vulnpyapp.local n'apparaît dans les résultats
@@ -2320,7 +2283,7 @@ def get_csrf_token(alice_client):
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECTION 2 — XSS (20 pts)
+# SECTION 2 — XSS (10 pts)
 # ═══════════════════════════════════════════════════════════════
 
 class TestXSS:
@@ -2415,7 +2378,7 @@ class TestXSS:
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECTION 3 — AUTHENTIFICATION & SESSIONS (20 pts)
+# SECTION 3 — AUTHENTIFICATION & SESSIONS (10 pts)
 # ═══════════════════════════════════════════════════════════════
 
 class TestAuthentication:
@@ -2468,16 +2431,12 @@ class TestAuthentication:
         TODO : Vérifier que le cookie de session a le flag HttpOnly.
         """
         # ─── À COMPLÉTER ───────────────────────────────────────
-        client.post('/login', data={
+        response = client.post('/login', data={
             'email': 'alice@vulnpyapp.local',
             'password': 'Alice123!'
         })
-        cookies = client.cookie_jar
-        for cookie in cookies:
-            if 'session' in cookie.name.lower() or 'sid' in cookie.name.lower():
-                assert cookie.has_nonstandard_attr('HttpOnly') or \
-                       getattr(cookie, '_rest', {}).get('HttpOnly') is not None, \
-                    "Cookie de session sans flag HttpOnly"
+        set_cookie = '\n'.join(response.headers.getlist('Set-Cookie'))
+        assert 'HttpOnly' in set_cookie, "Cookie de session sans flag HttpOnly"
         # ───────────────────────────────────────────────────────
 
     def test_session_invalidated_on_logout(self, alice_client):
@@ -2501,7 +2460,7 @@ class TestAuthentication:
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECTION 4 — CONTRÔLE D'ACCÈS (20 pts)
+# SECTION 4 — CONTRÔLE D'ACCÈS (10 pts)
 # ═══════════════════════════════════════════════════════════════
 
 class TestAccessControl:
@@ -2521,7 +2480,7 @@ class TestAccessControl:
             # Créer une commande appartenant à Bob
             bob_order = Order(
                 user_id=bob.id,
-                product='Secret Product',
+                product_name='Secret Product',
                 amount=999.99
             )
             db.session.add(bob_order)
@@ -2614,7 +2573,7 @@ class TestAdvancedInjections:
             '....//....//etc/passwd',
         ]
         for payload in payloads:
-            response = alice_client.get(f'/download?filename={payload}')
+            response = alice_client.get(f'/download?file={payload}')
             assert response.status_code in [400, 403, 404], \
                 f"Path traversal possible avec : {payload}"
             # Le contenu /etc/passwd ne doit jamais apparaître
@@ -2655,7 +2614,7 @@ class TestAdvancedInjections:
 # Rapport d'Audit de Sécurité — VulnPyApp
 **Auditeurs :** Prénom NOM 1 / Prénom NOM 2
 **Date :** JJ/MM/AAAA
-**Version auditée :** student-starter (branche Git : student-starter)
+**Version auditée :** `vulnpyapp/` v1.0
 **Méthode :** OWASP Testing Guide v4.2
 
 ---
@@ -2721,11 +2680,11 @@ URL : http://localhost:5000
 ## 5. Résultats pytest
 
 ```
-Résultats branche vulnérable :
+Résultats `vulnpyapp/` :
   FAILED tests/ ... XX tests
   PASSED tests/ ...  X tests
 
-Résultats branche remediated :
+Résultats `vulnpyapp_remediated/` :
   PASSED tests/ ... XX tests
 ```
 

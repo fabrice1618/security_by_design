@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # ✅ Métadonnées
 LABEL maintainer="formation-sece843"
-LABEL description="VulnPyApp v2.0 - remediated branch"
+LABEL description="VulnPyApp v2.0 - application remédiée"
 
 # ✅ Utilisateur non-root
 RUN groupadd -r appuser && useradd -r -g appuser appuser

@@ -1314,25 +1314,26 @@ Rédiger un document `analyse_rgpd.md` contenant :
 
 ### 🏗️ Setup
 
-**Important :** VulnPyApp existe en deux versions :
-- **Branche `student-starter`** : Application volontairement vulnérable avec les 15 vulnérabilités marquées `🚨 VULN #1..#15`. À utiliser pour cette séance.
-- **Branche `main` / `remediated`** : Version sécurisée avec les corrections marquées `✅ FIX #1..#15`. Utilisée en fin de séance pour comparaison.
+**Important :** VulnPyApp existe en deux dossiers dans ce dépôt :
+- **`vulnpyapp/`** : application volontairement vulnérable avec les 15 vulnérabilités marquées `🚨 VULN #1..#15`. À utiliser pour cette séance.
+- **`vulnpyapp_remediated/`** : version sécurisée avec les corrections marquées `✅ FIX #1..#15`. Utilisée en fin de séance pour comparaison.
 
 ```bash
 # 1. Cloner le dépôt (lien fourni par l'enseignant)
-git clone <URL_INSTITUTIONNELLE>/vulnpyapp.git
-cd vulnpyapp
+git clone <URL_INSTITUTIONNELLE>/security_by_design.git
+cd security_by_design/vulnpyapp
 
-# 2. Sélectionner la branche vulnérable (défaut pour cette séance)
-git checkout student-starter
-# ✅ Vous êtes maintenant sur la version avec 15 vulnérabilités marquées 🚨 VULN #N
+# 2. Lancer l'application vulnérable
+python init_db.py
+python app.py
+# ou : docker-compose up --build
 
-# 3. Lancer l'application
-docker-compose up --build
-
-# 4. Vérifier que l'app est accessible
+# 3. Vérifier que l'app est accessible
 curl http://localhost:5000
 # → Vous devez voir la page d'accueil
+
+# 4. Comparer ensuite avec la version corrigée
+# cd ../vulnpyapp_remediated && python init_db.py && python app.py
 
 # 5. Comptes de test disponibles
 # alice@vulnpyapp.local / Alice123!  (utilisateur normal)
@@ -1386,7 +1387,7 @@ Rapport attendu :
 -- Étape 2 : Identifier les colonnes affichées
 ?q=' UNION SELECT NULL,NULL,...--
 
--- Étape 3 : Extraire les données de la table 'user'
+-- Étape 3 : Extraire les données de la table 'users'
 ?q=' UNION SELECT ...
 ```
 
@@ -1399,9 +1400,9 @@ Rapport attendu :
 
 #### Challenge 3 — Énumération d'API & Information Disclosure *(20 pts)*
 
-**Contexte :** Vous venez de découvrir que la route `/api/users/<id>` retourne des données utilisateur sans demander de vérification supplémentaire. Analysez ce qui est accessible.
+**Contexte :** Après connexion avec un utilisateur normal, vous découvrez que la route `/api/users/<id>` retourne des données d'autres comptes sans vérification d'autorisation suffisante. Analysez ce qui est accessible.
 
-**Objectif :** Sans nécessairement connaître le nom technique de cette vulnérabilité, énumérez les utilisateurs en itérant sur les IDs et cartographiez l'impact informationnel.
+**Objectif :** En session authentifiée, sans être propriétaire des comptes ciblés, énumérez les utilisateurs en itérant sur les IDs et cartographiez l'impact informationnel.
 
 **Principe :**
 ```
@@ -1415,7 +1416,7 @@ Rapport attendu :
 **Travail attendu :**
 1. Script Python (`exploit_api_enum.py`) automatisant l'énumération des utilisateurs
 2. Fichier `users_enumeration.json` listant les utilisateurs découverts et les champs exposés
-3. Analyse d'impact : quelles informations sensibles sont accessibles sans authentification ?
+3. Analyse d'impact : quelles informations sensibles sont accessibles sans autorisation sur les comptes ciblés ?
 
 **Bonus facultatif :** Proposer une correction empêchant cette énumération
 
@@ -1473,7 +1474,7 @@ Pour chaque vulnérabilité identifiée, fournir :
 # Principe de correction : requêtes paramétrées via ORM
 
 # CODE VULNÉRABLE (à titre d'illustration) :
-# query = f"SELECT * FROM user WHERE email = '{email}'"
+# query = f"SELECT * FROM users WHERE email = '{email}'"
 
 # ✅ CODE CORRIGÉ :
 user = User.query.filter_by(email=email).first()
@@ -1522,7 +1523,7 @@ if user and user.check_password(password):
 # Rapport CTF - Injections SQL & XSS
 **Binôme :** Prénom NOM 1 / Prénom NOM 2
 **Date :** JJ/MM/AAAA
-**Version VulnPyApp :** student-starter
+**Version VulnPyApp :** `vulnpyapp/` v1.0
 
 ## Résumé exécutif
 [3-5 lignes : vulnérabilités trouvées, impact global]
@@ -1593,8 +1594,6 @@ if user and user.check_password(password):
 │  XSS Réfléchie fix          │ /6     │ Template corrigé     │
 │  XSS Stockée fix + Bleach   │ /10    │ Code + allowlist     │
 │  Tests pytest passants      │ /8     │ ≥80% de réussite     │
-├─────────────────────────────┼────────┼──────────────────────┤
-│ QUALITÉ RAPPORT             │ /10    │ Structure, clarté    │
 ├─────────────────────────────┼────────┼──────────────────────┤
 │ BONUS                       │        │                      │
 │  CSP header fonctionnel     │ +5     │                      │

@@ -4,10 +4,11 @@ from extensions import db as _db
 from models import User, Product, Order, Comment
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def app():
     app = create_app('testing')
     with app.app_context():
+        _db.drop_all()
         _db.create_all()
         _seed_db()
         yield app
