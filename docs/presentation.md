@@ -685,7 +685,7 @@ Pour chacune : *ligne · nom · CWE · CVSS · correction*.
 | 1.C | Quiz fondamentaux (QCM) | Fin séance 1 | **10 %** |
 | 2.A | Revue de code (en séance) | Séance 2 | **15 %** |
 | 2.B | Audit + pytest | S2 + 7 j | **25 %** |
-| 3 (projet) | Sécurisation app Django | S3 + 14 j | **30 %** |
+| 3 (projet) | Sécurisation app Flask | S3 + 14 j | **30 %** |
 | | | **TOTAL** | **100 %** |
 
 Pénalités : retard −10 pts/jour, code copié sans compréhension −30 pts.

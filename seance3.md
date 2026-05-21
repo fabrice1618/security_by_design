@@ -19,7 +19,7 @@
 
 ## Contexte du projet
 
-Vous recevrez une **application web vulnérable** (Django ou Flask) contenant volontairement plusieurs catégories de failles :
+Vous recevrez une **application web vulnérable** (Flask) contenant volontairement plusieurs catégories de failles :
 
 - Injections (SQL, SSTI, commandes système)
 - Vulnérabilités d'accès (authentification, IDOR, CSRF)
@@ -55,7 +55,7 @@ Votre mission est **triple** :
 ### Livrables attendus
 
 ```
-projet_django_secured/
+projet_flask_secured/
 ├── app_vulnerable/             # Code vulnérable (fourni, analysé)
 │   ├── app.py
 │   ├── models.py
@@ -237,7 +237,7 @@ Document unique `rapport_audit.md` (4–6 pages minimum) :
 #### Section 1 : Résumé exécutif (2 pts)
 
 ```markdown
-# Rapport d'Audit de Sécurité — Application Django
+# Rapport d'Audit de Sécurité — Application Flask
 
 **Date :** [Date]
 **Auditeur(s) :** [Noms]
@@ -258,7 +258,7 @@ L'audit a identifié **N vulnérabilités**, dont **X critiques**, **Y élevées
 ```markdown
 ## Méthodologie
 
-**Périmètre :** Code Python, configuration Flask/Django, templates, BDD
+**Périmètre :** Code Python, configuration Flask, templates, BDD
 
 **Outils utilisés :**
 - Bandit (scan statique Python)
@@ -395,7 +395,7 @@ Démonstration vidéo (5 min)          | +3     | Exploit → Remédiation, comm
 ### Documentation
 
 - [Flask Security](https://flask.palletsprojects.com/en/2.3.x/security/)
-- [Django Security](https://docs.djangoproject.com/en/4.2/topics/security/)
+- [Flask Security](https://flask.palletsprojects.com/en/2.3.x/security/)
 - [OWASP Cheat Sheets](https://cheatsheetseries.owasp.org/)
 - [CWE/CVSS](https://cwe.mitre.org/)
 

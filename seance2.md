@@ -2861,7 +2861,7 @@ def is_valid_email(email):
 │ 1.C         │ Quiz fondamentaux (QCM)  │ Fin séance │ 10%        │
 │ 2.A         │ Revue de code (en séance)│ Séance 2   │ 15%        │
 │ 2.B         │ Audit + pytest           │ S2 + 7j    │ 25%        │
-│ 3 (projet)  │ Sécurisation app Django  │ S3 + 14j   │ 30%        │
+│ 3 (projet)  │ Sécurisation app Flask  │ S3 + 14j   │ 30%        │
 ├─────────────┼──────────────────────────┼────────────┼────────────┤
 │ TOTAL       │                          │            │ 100%       │
 └─────────────┴──────────────────────────┴────────────┴────────────┘
