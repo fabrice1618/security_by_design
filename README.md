@@ -15,7 +15,7 @@ Si vous découvrez ce dépôt pour la première fois, suivez cet ordre :
 1. **Ce fichier (README.md)** — vue d'ensemble, tableau des 15 vulnérabilités, démarrage rapide
 2. **`seance1.md`** — cours magistral Séance 1 : fondamentaux CIA/RGPD, injections SQL, XSS, protections navigateur + Exercices 1.A, 1.B, 1.C
 3. **`seance2.md`** — cours magistral Séance 2 : CSRF, IDOR, Mass Assignment, SSTI, authentification, sessions, SDLC, OWASP API + Exercices 2.A, 2.B
-4. **`seance3.md`** — projet final : sécurisation d'application Django (30% de la note)
+4. **`seance3.md`** — projet final : sécurisation d'application Flask (30% de la note)
 5. **`vulnpyapp/`** — application Flask vulnérable à utiliser pendant les exercices
 6. **`docs/guide_correction.md`** — guide pas-à-pas par vulnérabilité (à consulter après avoir essayé par vous-même)
 7. **`quiz1c.md`** — Quiz fondamentaux (Exercice 1.C, fin de Séance 1)
