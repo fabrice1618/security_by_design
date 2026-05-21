@@ -1,4 +1,4 @@
-# Glossaire des acronymes — SECE843 Security By Design
+# Glossaire des acronymes — Security By Design
 
 Lexique des termes et acronymes utilisés dans les documents du cours.
 
@@ -204,4 +204,4 @@ Lexique des termes et acronymes utilisés dans les documents du cours.
 ---
 
 **Dernière mise à jour :** 2026-05-19  
-**Cours :** SECE843 - Security By Design (Master)
+**Cours :** Security By Design (Master)

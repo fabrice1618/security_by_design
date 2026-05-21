@@ -1,6 +1,6 @@
-# SECE843 — Security By Design
+# Security By Design
 
-Support pédagogique du cours **SECE843 - Security By Design** (Master).
+Support pédagogique du cours **Security By Design** (Master).
 Le dépôt contient une application Flask volontairement vulnérable, sa version
 remédiée, les supports de cours et une présentation Marp.
 

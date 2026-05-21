@@ -1,5 +1,5 @@
 # VulnPyApp — Guide de correction
-## SECE843 - Security By Design
+## Security By Design
 
 ---
 

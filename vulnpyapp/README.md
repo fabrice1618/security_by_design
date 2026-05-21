@@ -1,7 +1,7 @@
 # VulnPyApp 🐍🔓
 
 Application web Flask **volontairement vulnérable** destinée à la formation
-**SECE843 - Security By Design** (Master).
+**Security By Design** (Master).
 
 ## ⚠️ AVERTISSEMENT
 

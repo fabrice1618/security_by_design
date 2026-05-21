@@ -3,7 +3,7 @@ marp: true
 theme: default
 paginate: true
 size: 16:9
-header: "SECE843 — Security By Design"
+header: "Security By Design"
 footer: "Master · Support de cours"
 style: |
   section {
@@ -40,8 +40,7 @@ style: |
 
 <!-- _class: titre -->
 
-# SECE843
-## Security By Design
+# Security By Design
 
 **Sécuriser une application web Python / Flask**
 de la conception au déploiement
@@ -717,7 +716,7 @@ Pénalités : retard −10 pts/jour, code copié sans compréhension −30 pts.
 
 # Merci
 
-**SECE843 — Security By Design**
+**Security By Design**
 
 *Questions ?*
 

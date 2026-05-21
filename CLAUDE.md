@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Contexte du projet
 
-Support pédagogique pour le cours **SECE843 - Security By Design** (Master). Le dépôt contient une application Flask volontairement vulnérable, sa version remédiée, et les supports de cours associés. Tout le contenu est en français.
+Support pédagogique pour le cours **Security By Design** (Master). Le dépôt contient une application Flask volontairement vulnérable, sa version remédiée, et les supports de cours associés. Tout le contenu est en français.
 
 ## Structure des composants
 
