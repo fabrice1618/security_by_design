@@ -20,14 +20,17 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
 - Mécanismes :
   - Contrôle d'accès : RBAC, moindre privilège, SoD (Séparation des responsabilités)
   - Authentification forte : MFA (TOTP, WebAuthn/FIDO2), sessions sécurisées (cookies `HttpOnly`, `Secure`, `SameSite`)
-  - Chiffrement en transit : TLS/HTTPS ; au repos : AES, TDE (Transparent Data Encryption)
+  - Chiffrement en transit : TLS/HTTPS ; au repos : AES-256-GCM, TDE (Transparent Data Encryption)
   - Gestion des clés : rotation régulière, HSM/KMS, stockage hors code source
   - Protection des endpoints : EDR (Endpoint Detection & Response), DLP (Data Loss Prevention)
+- En RBAC, un champ applicatif `role` (`admin`, `user`, `manager`, etc.) sert à déterminer les droits d'accès côté serveur ; il ne doit jamais être utilisé uniquement pour masquer ou afficher des éléments d'interface.
+- Pour le chiffrement au repos en 2026, privilégier un mode authentifié comme `AES-256-GCM`. DES et RC4 sont obsolètes ; MD5 est un hash cassé, pas un algorithme de chiffrement.
 - Exemple de violation : fuite de base de données utilisateurs
 
 **Intégrité (Integrity)**
 - Garantir que les données ne sont pas altérées de manière non autorisée
 - Mécanismes : hashage (SHA-256, HMAC), signatures numériques (JWT, TLS), contraintes BDD (PK, FK, ACID), journalisation d'audit
+- HMAC (Hash-based Message Authentication Code) combine une fonction de hash et une clé secrète pour authentifier un message et détecter toute modification non autorisée. Il assure l'authenticité et l'intégrité, pas la confidentialité.
 - Exemple de violation : modification non autorisée d'une transaction bancaire
 
 **Disponibilité (Availability)**
@@ -36,7 +39,7 @@ La sécurité de l'information repose sur trois piliers fondamentaux :
   - Architecture résiliente : redondance (N+1), load balancing, répartition multi-régions
   - Protection DDoS : WAF, rate limiting, dégradation progressive (graceful degradation, feature flags)
   - PRA/PCA : backups chiffrés, restauration testée, RPO (Recovery Point Objective) et RTO (Recovery Time Objective) définis
-- Exemple de violation : attaque par déni de service
+- Exemple de violation : attaque par déni de service ; une attaque DDoS vise principalement la disponibilité.
 
 Les trois piliers sont interdépendants : un système qui garantit la confidentialité mais perd la disponibilité n'est pas sécurisé. Les mesures de sécurité doivent couvrir les trois axes simultanément.
 
@@ -45,7 +48,7 @@ graph LR
     CIA[Sécurité de l'information] --> Conf[Confidentialité]
     CIA --> Int[Intégrité]
     CIA --> Disp[Disponibilité]
-    Conf --> C1[Chiffrement AES/TLS]
+    Conf --> C1[Chiffrement AES-256-GCM/TLS]
     Conf --> C2[Contrôle d'accès RBAC]
     Int --> I1[Hash SHA-256]
     Int --> I2[Signatures numériques]
@@ -198,9 +201,14 @@ Le RGPD (Règlement Général sur la Protection des Données) impose des obligat
 - Protection des données dès la conception
 - Paramètres protecteurs par défaut
 
+**Violation de données personnelles**
+- Si une fuite présente un risque pour les droits et libertés des personnes, elle doit être notifiée à la CNIL dans les 72 heures après sa découverte.
+- Si le risque est élevé, les personnes concernées doivent aussi être informées.
+
 > **À retenir pour le moment**
 > - **Privacy by Design** : la sécurité des données doit être intégrée dès la conception, pas en ajout tardif
 > - **Minimisation** : ne stocker que ce qui est strictement nécessaire
+> - **Notification CNIL** : 72 heures après découverte d'une violation de données personnelles présentant un risque
 > - **Sanctions** : jusqu'à 4 % du chiffre d'affaires mondial en cas de violation
 
 ---
@@ -660,7 +668,7 @@ def login():
 Le XSS permet d'injecter du JavaScript exécuté dans le navigateur d'autres utilisateurs.
 
 **Impacts classiques** :
-- Vol de cookies de session (si non `HttpOnly`)
+- Vol de cookies de session (si non `HttpOnly`) ; un cookie `HttpOnly` n'est pas accessible via JavaScript (`document.cookie`)
 - Défiguration de page, redirection vers des sites de phishing
 - Keylogging et capture des frappes utilisateur
 - Actions non autorisées via les API (changement de mot de passe, transactions)
@@ -814,6 +822,7 @@ def search():
 ```html
 <!-- templates/search.html -->
 <!-- {{ query }} est automatiquement échappé -->
+<!-- Exemple : <script> devient &lt;script&gt; dans le HTML rendu -->
 <h1>Résultats pour : {{ query }}</h1>
 
 <!-- ATTENTION : | safe désactive l'échappement → DANGER -->
@@ -839,6 +848,7 @@ def search():
 import bleach
 
 ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'p', 'br']
+# Aucun attribut HTML autorisé : onerror/onload/onclick sont supprimés.
 ALLOWED_ATTRIBUTES = {}
 
 @app.route('/comment', methods=['POST'])
@@ -884,6 +894,7 @@ def profile():
 > **À retenir**
 > - **Règle d'or** : ne jamais injecter de données utilisateur directement dans du HTML, du JavaScript ou une URL — toujours échapper selon le contexte de sortie.
 > - `{{ var }}` dans Jinja2 est sûr par défaut. `{{ var | safe }}` est dangereux : n'utiliser que pour du contenu généré ou validé par votre propre code.
+> - La sanitization avec allowlist supprime les attributs dangereux comme `onerror`, `onload` ou `onclick` sur les contenus HTML riches.
 > - Le XSS stocké est le plus grave : un seul payload compromet **tous les visiteurs** de la page, y compris les administrateurs.
 > - CSP est la défense en profondeur côté navigateur : elle ne remplace pas l'échappement côté serveur, mais réduit l'impact des XSS résiduels.
 
@@ -1054,6 +1065,8 @@ shell=False → execve('ping', ['-c', '1', '-W', '2', 'localhost; cat /etc/passw
 
 ### 1.6.1 Same-Origin Policy (SOP)
 
+La SOP est une règle appliquée par le navigateur : un script chargé depuis une origine ne peut pas lire librement les données d'une autre origine.
+
 Une origine = **Protocole + Domaine + Port**
 
 ```
@@ -1097,7 +1110,8 @@ CORS(app,
 ```python
 # 🚨 NE JAMAIS FAIRE
 CORS(app, origins="*", supports_credentials=True)
-# Combinaison * + credentials = catastrophe sécurité
+# Combinaison * + credentials = violation de la spécification CORS
+# et catastrophe sécurité : le navigateur doit rejeter cette configuration.
 ```
 
 **Quand un preflight est-il déclenché ?** Le navigateur envoie une requête OPTIONS préliminaire pour les requêtes dites *non simples* :
@@ -1107,7 +1121,7 @@ CORS(app, origins="*", supports_credentials=True)
 
 ### 1.6.3 Content Security Policy (CSP)
 
-CSP permet de définir une whitelist des sources autorisées pour chaque type de ressource.
+CSP permet de définir une whitelist des sources autorisées pour chaque type de ressource. Par exemple, `script-src 'self'` bloque les scripts provenant d'origines non autorisées.
 
 ```python
 # ✅ Configuration CSP avec Flask-Talisman
@@ -1167,7 +1181,17 @@ def set_security_headers(response):
 3. Passer en `Content-Security-Policy` une fois toutes les violations corrigées.
 4. Utiliser des **nonces** générés par requête pour les scripts inline indispensables plutôt que `'unsafe-inline'`.
 
-### 1.6.4 Tableau comparatif
+### 1.6.4 Cookies SameSite et CSRF
+
+`SameSite` contrôle l'envoi des cookies lors de navigations ou requêtes cross-site.
+
+| Mode | Comportement | Protection CSRF |
+|------|-------------|-----------------|
+| `Strict` | Cookie jamais envoyé en cross-site | Maximale, mais peut casser certains liens entrants |
+| `Lax` | Cookie envoyé sur les navigations GET top-level | Bon compromis par défaut |
+| `None` | Cookie envoyé dans les contextes cross-site | Pas de protection CSRF ; nécessite `Secure` |
+
+### 1.6.5 Tableau comparatif
 
 | Mécanisme | Rôle | Configuration |
 |-----------|------|---------------|
@@ -1194,7 +1218,8 @@ sequenceDiagram
 
 > **À retenir**
 > - **SOP** isole les origines par défaut ; **CORS** ouvre des exceptions contrôlées ; **CSP** filtre les sources de contenu.
-> - `Access-Control-Allow-Origin: *` combiné à `Access-Control-Allow-Credentials: true` est **interdit** : cette combinaison annule toute protection CSRF basée sur l'origine.
+> - `SameSite=Strict` offre la meilleure protection CSRF côté cookie, mais peut empêcher certains parcours légitimes depuis des liens entrants.
+> - `Access-Control-Allow-Origin: *` combiné à `Access-Control-Allow-Credentials: true` est **interdit** par la spécification CORS : cette combinaison annule toute protection CSRF basée sur l'origine.
 > - Déployer CSP en mode `Report-Only` d'abord pour observer les violations sans bloquer de trafic légitime, puis passer en mode bloquant une fois la politique stabilisée.
 > - Ces quatre mécanismes sont complémentaires et non substituables : SOP (isolation) → CORS (exception contrôlée) → CSP (whitelist contenu) → HSTS (force TLS).
 
