@@ -1,7 +1,8 @@
 # Quiz 1.C — Fondamentaux de la sécurité web
 
-**Durée : 15 min — Pondération : 10% de la note finale**  
-**Format :** QCM, une seule bonne réponse par question
+**Durée : 25 min — Pondération : 10% de la note finale**  
+**Format :** QCM, une seule bonne réponse par question  
+**Remarque :** Ce quiz (36 questions) couvre l'intégrité des 3 séances, améliorant la couverture pédagogique : principes Security by Design, injections avancées (Path Traversal, Command Injection, SSTI), CSRF, IDOR, authentification sécurisée, sessions, rate limiting, et processus SDLC (SAST/DAST).
 
 ---
 
@@ -148,6 +149,122 @@ SELECT * FROM users WHERE email='admin@test.com' _______ AND password='...'
 - B) Uniquement les requêtes HTTPS
 - C) Les fichiers trop volumineux
 - D) Les connexions VPN
+
+---
+
+### SECTION 6 : Concepts clés et Principes Security by Design (3 questions)
+
+**Q21.** Lequel de ces énoncés décrit correctement le **CVSS v3.1** ?
+- A) Un type de vulnérabilité critique de réseau
+- B) Un standard pour évaluer et noter la gravité des vulnérabilités (score 0–10)
+- C) Un algorithme de chiffrement asymétrique
+- D) Une politique d'authentification multi-facteur
+
+**Q22.** Le principe Security by Design « **Least Privilege** » signifie :
+- A) Donner l'accès administrateur à tous les utilisateurs
+- B) Accorder uniquement les droits strictement nécessaires à un utilisateur
+- C) Minimiser les logs de sécurité
+- D) Utiliser les mots de passe les plus simples possible
+
+**Q23.** Qu'est-ce qu'une **surface d'attaque** en sécurité informatique ?
+- A) La zone physique du serveur
+- B) L'ensemble des points d'entrée (formulaires, APIs, ports) susceptibles d'être exploités
+- C) Le nombre total d'utilisateurs connectés
+- D) La vitesse des connexions réseau
+
+---
+
+### SECTION 7 : Injections avancées (Path Traversal, Command Injection, SSTI) (4 questions)
+
+**Q24.** Quelle vulnérabilité permet de traverser la hiérarchie des répertoires en utilisant `../` pour accéder à des fichiers sensibles ?
+- A) Injection SQL
+- B) Cross-Site Scripting
+- C) **Path Traversal** (Traversée de répertoire)
+- D) Command Injection
+
+**Q25.** Pourquoi utiliser `shell=True` dans `subprocess.check_output(f"ping {host}", shell=True)` en Python est-il dangereux ?
+- A) Cela ralentit les performances
+- B) L'utilisateur peut injecter des commandes via des séparateurs comme `;` ou `|`
+- C) Cela fonctionne uniquement sous Linux
+- D) Cela consomme trop de mémoire
+
+**Q26.** Qu'est-ce qu'une vulnérabilité **SSTI** (Server-Side Template Injection) ?
+- A) Injection de balises HTML côté client (navigateur)
+- B) Injection de code dans un template côté serveur, permettant l'exécution de code arbitraire (RCE)
+- C) Injection de SQL dans une base de données
+- D) Injection de JavaScript que le serveur réfléchit
+
+**Q27.** Quel fonction Python peut aider à prévenir les injections de commandes ?
+- A) Utiliser `os.system()` avec validation simples
+- B) Utiliser `subprocess.run()` avec une liste d'arguments et `shell=False`
+- C) Déactiver le shell de l'OS
+- D) Aucune, les injections de commandes sont inévitables
+
+---
+
+### SECTION 8 : Vulnerabilités d'accès et CSRF (4 questions)
+
+**Q28.** Quelle est la différence fondamentale entre **Authentification** et **Autorisation** ?
+- A) Ce sont deux termes synonymes
+- B) **Authentification** = vérifier l'identité (qui êtes-vous ?) ; **Autorisation** = vérifier les droits (que pouvez-vous faire ?)
+- C) Authentification s'applique uniquement aux administrateurs
+- D) Autorisation est vérifiée avant l'authentification
+
+**Q29.** Qu'est-ce qu'une vulnérabilité **IDOR** (Insecure Direct Object Reference) ?
+- A) Une injection de commande système
+- B) Accès non autorisé à des ressources via une référence directe prédictible sans vérifier la propriété
+- C) Une authentification sans mot de passe
+- D) Une fuite de session cookie via le réseau
+
+**Q30.** **CSRF** (Cross-Site Request Forgery) exploite le fait que :
+- A) Les mots de passe sont stockés en clair
+- B) Le navigateur envoie automatiquement les cookies de session, même pour des requêtes initiées depuis un autre site
+- C) Les bases de données ne sont pas chiffrées
+- D) Les utilisateurs ne lisent pas les conditions d'utilisation
+
+---
+
+### SECTION 9 : Authentification sécurisée et Mass Assignment (4 questions)
+
+**Q31.** **Mass Assignment** se produit quand :
+- A) Plusieurs utilisateurs se connectent simultanément
+- B) L'application accepte tous les champs POST sans filtrage, permettant la modification de champs sensibles comme `is_admin`
+- C) Le serveur refuse trop de connexions
+- D) Le cache est saturé
+
+**Q32.** Entre **MD5**, **SHA-256** et **bcrypt**, lequel est recommandé pour hasher les mots de passe en 2026 ?
+- A) MD5 (résistant et rapide)
+- B) SHA-256 (standard moderne)
+- C) **bcrypt** ou **Argon2** (coût configurable, résistant aux attaques GPU/ASIC)
+- D) Base64 (facile à implémenter)
+
+**Q33.** Qu'est-ce qu'une **Session Fixation** et comment la prévenir ?
+- A) L'attaquant fixe un identifiant de session et la victime l'utilise ; prévention : régénérer complètement la session après login
+- B) C'est impossible à prévenir
+- C) À résoudre uniquement avec HTTPS
+- D) À traiter avec des cookies sans attribut Secure
+
+**Q34.** Quel mode **SameSite** du cookie de session offre la meilleure protection **CSRF** mais peut bloquer certains accès légitimes ?
+- A) `None`
+- B) `Lax`
+- C) **`Strict`**
+- D) `Encrypted`
+
+---
+
+### SECTION 10 : Protections applicatives (Rate Limiting, SAST/DAST) (2 questions)
+
+**Q35.** **Rate limiting** sur un endpoint sensible comme `/login` sert à :
+- A) Accélérer les connexions réussies
+- B) Limiter le nombre de tentatives par minute pour bloquer les attaques par brute force
+- C) Chiffrer automatiquement les mots de passe
+- D) Ajouter un délai de réseau artificiel
+
+**Q36.** Quelle est la différence entre **SAST** et **DAST** dans un SDLC sécurisé ?
+- A) SAST analyse le code source statiquement ; DAST teste l'application en cours d'exécution
+- B) Ce sont deux noms du même processus
+- C) SAST ne détecte que les erreurs de syntaxe
+- D) DAST ne fonctionne qu'en production
 
 ---
 
